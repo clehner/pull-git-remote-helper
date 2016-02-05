@@ -1,0 +1,35 @@
+{
+  "name": "pull-git-remote-helper",
+  "version": "0.0.0",
+  "description": "use pull-streams to make gitremote-helpers(1)",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/run.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/clehner/pull-git-remote-helper"
+  },
+  "keywords": [
+    "pull-stream",
+    "git",
+    "git-remote-helper"
+  ],
+  "author": "Charles Lehner (http://celehner.com/)",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/clehner/pull-git-remote-helper/issues"
+  },
+  "dependencies": {
+    "js-git": "^0.7.7",
+    "pull-buffered": "^0.3.0",
+    "pull-cat": "^1.1.8",
+    "pull-pushable": "^2.0.0",
+    "pull-stream": "^3.1.0",
+    "stream-to-pull-stream": "^1.6.6"
+  },
+  "devDependencies": {
+    "pull-stream": "^3.1.0",
+    "tape": "^4.4.0"
+  }
+}
