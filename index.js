@@ -89,9 +89,12 @@ function createHash() {
 
 function uploadPack(read) {
   return function (abort, cb) {
-    cb('upload pack not implemented')
+    var lines = packLineDecode(read)
+    receiveRefs(lines.packLines, function (err, refs) {
+      console.error('refs', refs, err)
+      if (err) return cb(err)
+    })
   }
-  // throw new Error('upload pack')
 }
 
 function getRefs() {
@@ -156,13 +159,12 @@ report-status delete-refs side-band-64k quiet atomic ofs-delta
 
 // Get a line for each ref that we have. The first line also has capabilities.
 // Wrap with packLineEncode.
-function receivePackHeader(capabilities) {
-  var readRef = getRefs()
+function receivePackHeader(capabilities, refsSource) {
   var first = true
   var ended
   return function (abort, cb) {
     if (ended) return cb(true)
-    readRef(abort, function (end, ref) {
+    refsSource(abort, function (end, ref) {
       ended = end
       var name = ref && ref.name
       var hash = ref && ref.hash
@@ -191,31 +193,27 @@ function receiveActualPack(read, objectSink, onEnd) {
   objectSink(objects)
 }
 
-function receivePack(read, objectSink) {
-  var ended
-  var sendRefs = receivePackHeader([])
+function receiveRefs(readLine, cb) {
+  var refs = []
+  readLine(null, function next(end, line) {
+    if (end)
+      cb(end)
+    else if (line.length == 0)
+      cb(null, refs)
+    else {
+      var args = split2(line.toString('ascii'))
+      refs.push({
+        hash: args[0],
+        name: args[1]
+      })
+      readLine(null, next)
+    }
+  })
+}
 
-  function receiveRefs(readLine, cb) {
-    var refs = []
-    readLine(null, function next(end, line) {
-      /*
-      if (end === true)
-        cb(new Error('refs line ended early'))
-      else */
-      if (end)
-        cb(end)
-      else if (line === '')
-        cb(null, refs)
-      else {
-        var args = split2(line)
-        refs.push({
-          hash: args[0],
-          name: args[1]
-        })
-        readLine(null, next)
-      }
-    })
-  }
+function receivePack(read, objectSink, refsSource) {
+  var ended
+  var sendRefs = receivePackHeader([], refsSource)
 
   return packLineEncode(
     cat([
@@ -227,8 +225,7 @@ function receivePack(read, objectSink) {
         // receive their refs
         var lines = packLineDecode(read)
         receiveRefs(lines.packLines, function (err, refs) {
-          if (refs)
-            console.error('refs', refs, err)
+          // console.error('refs', refs, err)
           if (err) return cb(err)
           // receive the pack
           receiveActualPack(lines.passthrough, objectSink, function (err) {
@@ -258,6 +255,7 @@ module.exports = function (opts) {
   var ended
   var prefix = opts.prefix
   var objectSink = opts.objectSink
+  var refsSource = opts.refsSource || pull.empty()
 
   function handleConnect(cmd, read) {
     var args = split2(cmd)
@@ -265,7 +263,7 @@ module.exports = function (opts) {
       case 'git-upload-pack':
         return prepend('\n', uploadPack(read))
       case 'git-receive-pack':
-        return prepend('\n', receivePack(read), objectSink)
+        return prepend('\n', receivePack(read, objectSink, refsSource))
       default:
         return pull.error(new Error('Unknown service ' + args[0]))
     }
