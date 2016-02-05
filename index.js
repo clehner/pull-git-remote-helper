@@ -62,6 +62,11 @@ function split2(str) {
   ]
 }
 
+function split3(str) {
+  var args = split2(str)
+  return [args[0]].concat(split2(args[1]))
+}
+
 function optionSource(cmd) {
   var args = split2(cmd)
   var msg = handleOption(args[0], args[1])
@@ -87,14 +92,19 @@ function createHash() {
   return hasher
 }
 
-function uploadPack(read) {
-  return function (abort, cb) {
-    var lines = packLineDecode(read)
-    receiveRefs(lines.packLines, function (err, refs) {
-      console.error('refs', refs, err)
-      if (err) return cb(err)
-    })
-  }
+function uploadPack(read, objectSource, refSource) {
+  /* multi_ack thin-pack side-band side-band-64k ofs-delta shallow no-progress
+   * include-tag multi_ack_detailed symref=HEAD:refs/heads/master
+   * agent=git/2.7.0 */
+  var sendRefs = receivePackHeader([
+  ], refSource, false)
+
+  return packLineEncode(
+    cat([
+      sendRefs,
+      pull.once('')
+    ])
+  )
 }
 
 function getRefs() {
@@ -138,18 +148,52 @@ function packLineDecode(read) {
   var readPrefix = b.chunks(4)
   var ended
 
-  b.packLines = function (abort, cb) {
+  function readPackLine(abort, cb) {
     readPrefix(abort, function (end, buf) {
       if (ended = end) return cb(end)
       var len = parseInt(buf, 16)
-      b.chunks(len)(null, function (end, buf) {
+      if (!len)
+        return cb(null, new Buffer(''))
+      // TODO: figure out this -4 thing
+      b.chunks(len - 4)(null, function (end, buf) {
         if (ended = end) return cb(end)
         cb(end, buf)
       })
     })
   }
 
+  function readUpdate(abort, cb) {
+    readPackLine(abort, function (end, line) {
+      if (end) return cb(end)
+      console.error('line', line.toString('ascii'))
+      if (!line.length) return cb(true)
+      var args = split3(line.toString('ascii'))
+      cb(null, {
+        old: args[0],
+        new: args[1],
+        name: args[2]
+      })
+    })
+  }
+
+  b.packLines = readPackLine
+  b.updates = readUpdate
+
   return b
+}
+
+// run a callback when a pipeline ends
+// TODO: find a better way to do this
+function onThroughEnd(onEnd) {
+  return function (read) {
+    return function (end, cb) {
+      read(end, function (end, data) {
+        cb(end, data)
+        if (end)
+          onEnd(end === true ? null : end)
+      })
+    }
+  }
 }
 
 /*
@@ -159,16 +203,16 @@ report-status delete-refs side-band-64k quiet atomic ofs-delta
 
 // Get a line for each ref that we have. The first line also has capabilities.
 // Wrap with packLineEncode.
-function receivePackHeader(capabilities, refsSource) {
+function receivePackHeader(capabilities, refSource, usePlaceholder) {
   var first = true
   var ended
   return function (abort, cb) {
     if (ended) return cb(true)
-    refsSource(abort, function (end, ref) {
+    refSource(abort, function (end, ref) {
       ended = end
       var name = ref && ref.name
       var hash = ref && ref.hash
-      if (first) {
+      if (first && usePlaceholder) {
         first = false
         if (end) {
           // use placeholder data if there are no refs
@@ -184,36 +228,22 @@ function receivePackHeader(capabilities, refsSource) {
   }
 }
 
-function receiveActualPack(read, objectSink, onEnd) {
+function decodePack(read) {
   var objects = pushable()
-  packCodec.decodePack(function (obj) {
-    if (obj) pushable.push(obj)
-    else     pushable.end()
+  var decode = packCodec.decodePack(function (obj) {
+    if (obj) objects.push(obj)
+    else     objects.end()
   })
-  objectSink(objects)
+  read(null, function next(end, data) {
+    if (end) decode()
+    else     decode(data)
+  })
+  return objects
 }
 
-function receiveRefs(readLine, cb) {
-  var refs = []
-  readLine(null, function next(end, line) {
-    if (end)
-      cb(end)
-    else if (line.length == 0)
-      cb(null, refs)
-    else {
-      var args = split2(line.toString('ascii'))
-      refs.push({
-        hash: args[0],
-        name: args[1]
-      })
-      readLine(null, next)
-    }
-  })
-}
-
-function receivePack(read, objectSink, refsSource) {
+function receivePack(read, objectSink, refSource, refSink) {
   var ended
-  var sendRefs = receivePackHeader([], refsSource)
+  var sendRefs = receivePackHeader([], refSource, true)
 
   return packLineEncode(
     cat([
@@ -224,15 +254,25 @@ function receivePack(read, objectSink, refsSource) {
         if (abort) return
         // receive their refs
         var lines = packLineDecode(read)
-        receiveRefs(lines.packLines, function (err, refs) {
-          // console.error('refs', refs, err)
+        pull(
+          lines.updates,
+          onThroughEnd(refsDone),
+          refSink
+        )
+        function refsDone(err) {
           if (err) return cb(err)
           // receive the pack
-          receiveActualPack(lines.passthrough, objectSink, function (err) {
-            if (err) return cb(err)
-            cb(true)
-          })
-        })
+          pull(
+            lines.passthrough,
+            decodePack,
+            onThroughEnd(objectsDone),
+            objectSink
+          )
+        }
+        function objectsDone(err) {
+          if (err) return cb(err)
+          cb(true)
+        }
       },
       pull.once('unpack ok')
     ])
@@ -255,15 +295,18 @@ module.exports = function (opts) {
   var ended
   var prefix = opts.prefix
   var objectSink = opts.objectSink
-  var refsSource = opts.refsSource || pull.empty()
+  var objectSource = opts.objectSource || pull.empty()
+  var refSource = opts.refSource || pull.empty()
+  var refSink = opts.refSink
 
   function handleConnect(cmd, read) {
     var args = split2(cmd)
     switch (args[0]) {
       case 'git-upload-pack':
-        return prepend('\n', uploadPack(read))
+        return prepend('\n', uploadPack(read, objectSource, refSource))
       case 'git-receive-pack':
-        return prepend('\n', receivePack(read, objectSink, refsSource))
+        return prepend('\n', receivePack(read, objectSink, refSource,
+          refSink))
       default:
         return pull.error(new Error('Unknown service ' + args[0]))
     }

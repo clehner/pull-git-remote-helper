@@ -28,6 +28,13 @@ tape('init repo', function (t) {
   })
 })
 
+tape('push with empty repo', function (t) {
+  git('push', remote, function (code) {
+    t.equals(code, 0, 'pushed')
+    t.end()
+  })
+})
+
 tape('make a commit and push', function (t) {
   var filename = path.join(tmpDir, 'blah.txt')
   fs.writeFile(filename, 'i am a file', function (err) {
@@ -44,6 +51,15 @@ tape('make a commit and push', function (t) {
     })
   })
 })
+
+/*
+tape('fetch', function (t) {
+  git('fetch', '-vv', remote, function (code) {
+    t.equals(code, 0, 'fetched')
+    t.end()
+  })
+})
+*/
 
 tape.onFinish(function () {
   if (tmpDir)
