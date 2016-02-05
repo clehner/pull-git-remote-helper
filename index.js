@@ -141,7 +141,6 @@ function packLineDecode(read) {
       var len = parseInt(buf, 16)
       b.chunks(len)(null, function (end, buf) {
         if (ended = end) return cb(end)
-        console.error('refline', buf)
         cb(end, buf)
       })
     })
@@ -199,9 +198,11 @@ function receivePack(read, objectSink) {
   function receiveRefs(readLine, cb) {
     var refs = []
     readLine(null, function next(end, line) {
+      /*
       if (end === true)
         cb(new Error('refs line ended early'))
-      else if (end)
+      else */
+      if (end)
         cb(end)
       else if (line === '')
         cb(null, refs)
@@ -282,7 +283,7 @@ module.exports = function (opts) {
       case 'option':
         return optionSource(args[1])
       default:
-        return pull.error(new Error('Unknown command ' + args[0]))
+        return pull.error(new Error('Unknown command ' + line))
     }
   }
 
@@ -292,9 +293,12 @@ module.exports = function (opts) {
     var command
 
     function getCommand(cb) {
-      b.lines(null, function (end, line) {
+      b.lines(null, function next(end, line) {
         if (ended = end)
           return cb(end)
+
+        if (line == '')
+          return b.lines(null, next)
 
         if (options.verbosity > 1)
           console.error('command:', line)
