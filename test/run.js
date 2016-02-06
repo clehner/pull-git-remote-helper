@@ -76,6 +76,8 @@ tape('make a commit and push', function (t) {
   var commitMessage = 'Initial commit'
   var fileName = 'blah.txt'
   var fileContents = 'i am a file'
+  var fileHash = new Buffer(20)
+  fileHash.hexWrite('68bd10497ea68e91fa85024d0a0b2fe54e212914')
 
   var objects = t.items(t.deepEquals, [
     [{
@@ -84,7 +86,7 @@ tape('make a commit and push', function (t) {
     }, 'got the commit'],
     [{
       type: 'tree',
-      data: '100644 ' + fileName + '\u0000h=\u0010I~&\u000e\u0011z\u0005\u0002M\n\u000b/eN!)\u0014'
+      data: '100644 ' + fileName + '\0' + fileHash.toString('ascii')
     }, 'got the tree'],
     [{
       type: 'blob', data: fileContents
