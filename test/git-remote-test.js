@@ -11,13 +11,12 @@ pull(
       readObject(null, function next(end, type, read) {
         if (end === true) return
         if (end) throw end
-        console.error('got object of type', type)
         pull(
           read,
           pull.collect(function (err, bufs) {
             if (err) throw err
             var data = Buffer.concat(bufs).toString('ascii')
-            console.error('object', data.length, data)
+            console.error('object', type, bufs.length, data.length, JSON.stringify(data))
             readObject(null, next)
           })
         )

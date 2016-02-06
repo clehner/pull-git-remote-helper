@@ -66,11 +66,12 @@ function decodePack(onEnd, read) {
   var ended
   var numObjects = -1
   var checksum = createHash('sha1')
-  var b = buffered(checksum(read))
-  var readByte = b.chunks(1)
-  var readWord = b.chunks(4)
+  var b = buffered(read)
+  // TODO: optimize to pass through buffers to checksum
+  var readByte = checksum(b.chunks(1))
+  var readWord = checksum(b.chunks(4))
   var readChecksum = b.chunks(20)
-  var expectChecksum = false
+  var expectChecksum = true
   var opts = {
     verbosity: 2
   }
@@ -114,7 +115,7 @@ function decodePack(onEnd, read) {
       var firstByte = buf[0]
       type = objectTypes[(firstByte >> 4) & 7]
       value = firstByte & 15
-      console.error('byte1', firstByte, firstByte.toString(2), value, value.toString(2))
+      // console.error('byte1', firstByte, firstByte.toString(2), value, value.toString(2))
       shift = 4
       checkByte(firstByte)
     })
@@ -131,32 +132,39 @@ function decodePack(onEnd, read) {
       var byte = buf[0]
       value += (byte & 0x7f) << shift
       shift += 7
-      console.error('byte', byte, byte.toString(2), value, value.toString(2))
+      // console.error('byte', byte, byte.toString(2), value, value.toString(2))
       checkByte(byte)
     }
   }
 
   function getObject(cb) {
     readVarInt(function (end, type, length) {
-      console.error('read var int', end, type, length)
+      if (opts.verbosity >= 2)
+        console.error('read var int', end, type, length)
+      numObjects--
       if (end === true && expectChecksum)
         onEnd(new Error('Missing checksum'))
       if (ended = end) return cb(end)
-      numObjects--
       // TODO: verify that the inflated data is the correct length
       cb(null, type, inflateBytes(readByte))
     })
   }
 
   function readTrailer(cb) {
+    // read the checksum before it updates to include the trailer
+    var expected = checksum.digest()
     readChecksum(null, function (end, value) {
       cb(true)
-      var actual = checksum.digest()
-      if (!value.equals(actual))
+      if (end === true && expectChecksum)
+        onEnd(new Error('Missing checksum'))
+      if (!value.equals(expected)) {
         onEnd(new Error('Checksum mismatch: ' +
-          actual.hexSlice() + ' != ' + value.hexSlice()))
-      else
+          expected.hexSlice() + ' != ' + value.hexSlice()))
+      } else {
+        if (opts.verbosity >= 2)
+          console.error('checksum ok', expected.hexSlice())
         onEnd(null)
+      }
     })
   }
 
