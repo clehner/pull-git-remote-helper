@@ -1,8 +1,8 @@
-var zlib = require('zlib')
 var buffered = require('pull-buffered')
 var crypto = require('crypto')
 var pull = require('pull-stream')
 var toPull = require('stream-to-pull-stream')
+var Inflate = require('pako/lib/inflate').Inflate
 
 exports.decode = decodePack
 
@@ -19,9 +19,44 @@ function error(cb) {
 
 function createHash(type) {
   var hash = crypto.createHash(type)
-  return pull.through(function (data) {
-    hash.update(data)
-  })
+  var hasher = pull.through(hash.update.bind(hash))
+  hasher.digest = hash.digest.bind(hash)
+  return hasher
+}
+
+function inflateBytes(read) {
+  var inflate = new Inflate()
+  var ended, dataOut
+
+  inflate.onData = function (data) {
+    dataOut = new Buffer(data)
+    // console.error('inflated data', data.length)
+  }
+
+  inflate.onEnd = function (status) {
+    ended = (status === 0) ? true : new Error(inflate.msg)
+    // console.error('inflated end', status, ended)
+  }
+
+  return function (abort, cb) {
+    if (ended) return cb(ended)
+    read(abort, function next(end, data) {
+      if (end === true) {
+        end = null
+        data = []
+      }
+      if (ended = end) return cb(end)
+      if (data.length > 1) return cb(new Error('got more than one byte'))
+      dataOut = null
+      inflate.push(data, end === true)
+      if (dataOut)
+        cb(null, dataOut)
+      else if (ended)
+        cb(ended)
+      else
+        read(null, next)
+    })
+  }
 }
 
 function decodePack(onEnd, read) {
@@ -36,6 +71,9 @@ function decodePack(onEnd, read) {
   var readWord = b.chunks(4)
   var readChecksum = b.chunks(20)
   var expectChecksum = false
+  var opts = {
+    verbosity: 2
+  }
 
   function readHeader(cb) {
     readWord(null, function (end, header) {
@@ -62,6 +100,8 @@ function decodePack(onEnd, read) {
     readWord(null, function (end, word) {
       if (ended = end) return cb(end)
       numObjects = word.readUInt32BE()
+      if (opts.verbosity >= 1)
+        console.error(numObjects + ' objects')
       readObject(null, cb)
     })
   }
@@ -72,15 +112,15 @@ function decodePack(onEnd, read) {
     readByte(null, function (end, buf) {
       if (ended = end) return cb(end)
       var firstByte = buf[0]
-      type = objectTypes[(firstByte & 0b01110000) >> 4]
-      value = firstByte & 0b00001111
+      type = objectTypes[(firstByte >> 4) & 7]
+      value = firstByte & 15
       console.error('byte1', firstByte, firstByte.toString(2), value, value.toString(2))
       shift = 4
       checkByte(firstByte)
     })
 
     function checkByte(byte) {
-      if (byte & 0b10000000)
+      if (byte & 0x80)
         readByte(null, gotByte)
       else
         cb(null, type, value)
@@ -89,7 +129,7 @@ function decodePack(onEnd, read) {
     function gotByte(end, buf) {
       if (ended = end) return cb(end)
       var byte = buf[0]
-      value |= ((byte & 0b01111111) << shift)
+      value += (byte & 0x7f) << shift
       shift += 7
       console.error('byte', byte, byte.toString(2), value, value.toString(2))
       checkByte(byte)
@@ -98,15 +138,13 @@ function decodePack(onEnd, read) {
 
   function getObject(cb) {
     readVarInt(function (end, type, length) {
+      console.error('read var int', end, type, length)
       if (end === true && expectChecksum)
         onEnd(new Error('Missing checksum'))
       if (ended = end) return cb(end)
-        console.error('length', length)
       numObjects--
-      cb(null, type, pull(
-        b.take(length),
-        toPull(zlib.createInflate())
-      ))
+      // TODO: verify that the inflated data is the correct length
+      cb(null, type, inflateBytes(readByte))
     })
   }
 
