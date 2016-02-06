@@ -5,30 +5,58 @@ var mktemp = require('mktemp')
 var rimraf = require('rimraf')
 var fs = require('fs')
 
+function noop() {}
+
 var env = Object.create(process.env)
 env.PATH = __dirname + ':' + env.PATH
 env.GIT_AUTHOR_DATE = env.GIT_COMMITTER_DATE = '1000000000 -0500'
-var author = 'root <root@localhost>'
+var user = {
+  name: 'test',
+  email: 'test@localhost'
+}
+var userStr = user.name + ' <' + user.email + '>'
 var remote = 'test.js://foo'
 
 var tmpDir = mktemp.createDirSync(path.join(require('os').tmpdir(), 'XXXXXXX'))
 
-function git() {
+function handleIpcMessage(t, cb) {
+  return function (msg) {
+    if (msg.error) {
+      var err = new Error(msg.error.message)
+      err.stack = msg.error.stack
+      t.error(err)
+    } else {
+      cb(msg)
+    }
+  }
+}
+
+tape.Test.prototype.git = function () {
   var args = [].slice.call(arguments)
-  var cb = args.pop()
-  spawn('git', args, {
+  var doneCb = args.pop()
+  var msgCb = (typeof args[args.length-1] == 'function') && args.pop()
+  return spawn('git', args, {
     env: env,
     cwd: tmpDir,
-    stdio: ['ignore', process.stderr, process.stderr]
-  }).on('close', cb)
+		stdio: ['ignore', 'inherit', 'inherit', 'ipc']
+  })
+  .on('close', doneCb)
+  .on('message', handleIpcMessage(this, msgCb))
+}
+
+tape.Test.prototype.items = function (fn, items) {
+  var i = 0
+  return function (item) {
+    fn.apply(this, [item].concat(items[i++]))
+  }.bind(this)
 }
 
 tape('init repo', function (t) {
-  git('init', function (code) {
-    t.equals(code, 0, 'inited')
-    git('config', 'user.name', 'test', function (code) {
+  t.git('init', function (code) {
+    t.equals(code, 0, 'git init')
+    t.git('config', 'user.name', user.name, function (code) {
       t.equals(code, 0, 'set user name')
-      git('config', 'user.email', 'test@localhost', function (code) {
+      t.git('config', 'user.email', user.email, function (code) {
         t.equals(code, 0, 'set user email')
         t.end()
       })
@@ -37,21 +65,55 @@ tape('init repo', function (t) {
 })
 
 tape('push with empty repo', function (t) {
-  git('push', remote, function (code) {
+  t.git('push', remote, function (msg) {
+  }, function (code) {
     t.equals(code, 0, 'pushed')
     t.end()
   })
 })
 
 tape('make a commit and push', function (t) {
-  var filename = path.join(tmpDir, 'blah.txt')
-  fs.writeFile(filename, 'i am a file', function (err) {
+  var commitMessage = 'Initial commit'
+  var fileName = 'blah.txt'
+  var fileContents = 'i am a file'
+
+  var objects = t.items(t.deepEquals, [
+    [{
+      type: 'commit',
+      data: 'tree 75c54aa020772a916853987a03bff7079463a861\nauthor ' + userStr + ' 1000000000 -0500\ncommitter ' + userStr + ' 1000000000 -0500\n\n' + commitMessage + '\n'
+    }, 'got the commit'],
+    [{
+      type: 'tree',
+      data: '100644 ' + fileName + '\u0000h=\u0010I~&\u000e\u0011z\u0005\u0002M\n\u000b/eN!)\u0014'
+    }, 'got the tree'],
+    [{
+      type: 'blob', data: fileContents
+    }, 'got the blob']
+  ])
+
+  var refs = t.items(t.deepEquals, [
+    [{
+      name: 'refs/heads/master',
+      new: 'edb5b50e8019797925820007d318870f8c346726',
+      old: null
+    }, 'got the ref']
+  ])
+
+  var filePath = path.join(tmpDir, fileName)
+  fs.writeFile(filePath, fileContents, function (err) {
     t.error(err, 'wrote a file')
-    git('add', filename, function (code) {
+    t.git('add', filePath, function (code) {
       t.equals(code, 0, 'added file')
-      git('commit', '-mInitial commit', function (code) {
+      t.git('commit', '-m', commitMessage, function (code) {
         t.equals(code, 0, 'made initial commit')
-        git('push', '-vv', remote, 'master', function (code) {
+        t.git('push', '-vv', remote, 'master', function (msg) {
+          if (msg.object)
+            objects(msg.object)
+          else if (msg.ref)
+            refs(msg.ref)
+          else
+            t.notOk(msg, 'unexpected message')
+        }, function (code) {
           t.equals(code, 0, 'pushed')
           t.end()
         })
@@ -62,7 +124,7 @@ tape('make a commit and push', function (t) {
 
 /*
 tape('fetch', function (t) {
-  git('fetch', '-vv', remote, function (code) {
+  t.git('fetch', '-vv', remote, function (code) {
     t.equals(code, 0, 'fetched')
     t.end()
   })

@@ -3,6 +3,13 @@
 var toPull = require('stream-to-pull-stream')
 var pull = require('pull-stream')
 
+process.on('uncaughtException', function (err) {
+  if (err.stack)
+    err = {stack: err.stack, message: err.message}
+  process.send({error: err})
+  process.exit(1)
+})
+
 pull(
   toPull(process.stdin),
   require('../')({
@@ -16,18 +23,19 @@ pull(
           pull.collect(function (err, bufs) {
             if (err) throw err
             var data = Buffer.concat(bufs).toString('ascii')
-            console.error('object', type, bufs.length, data.length, JSON.stringify(data))
+            process.send({object: {type: type, data: data}})
             readObject(null, next)
           })
         )
       })
     },
     refSink: pull.drain(function (ref) {
-      console.error('ref', ref)
+      process.send({ref: ref})
     }),
   }),
   toPull(process.stdout, function (err) {
     if (err)
       throw err
+    process.disconnect()
   })
 )
