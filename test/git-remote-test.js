@@ -7,9 +7,22 @@ pull(
   toPull(process.stdin),
   require('../')({
     prefix: 'foo',
-    objectSink: pull.drain(function (obj) {
-      console.error('obj', obj)
-    }),
+    objectSink: function (readObject) {
+      readObject(null, function next(end, type, read) {
+        if (end === true) return
+        if (end) throw end
+        console.error('got object of type', type)
+        pull(
+          read,
+          pull.collect(function (err, bufs) {
+            if (err) throw err
+            var data = Buffer.concat(bufs).toString('ascii')
+            console.error('object', data.length, data)
+            readObject(null, next)
+          })
+        )
+      })
+    },
     refSink: pull.drain(function (ref) {
       console.error('ref', ref)
     }),

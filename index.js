@@ -1,19 +1,13 @@
 var packCodec = require('js-git/lib/pack-codec')
 var pull = require('pull-stream')
 var cat = require('pull-cat')
-var pushable = require('pull-pushable')
 var buffered = require('pull-buffered')
+var pack = require('./pack')
 
-var options = {
-  verbosity: 1,
-  progress: false
-}
-
-function handleOption(name, value) {
+function handleOption(options, name, value) {
   switch (name) {
     case 'verbosity':
       options.verbosity = +value || 0
-      // console.error("ok verbo")
       return true
     case 'progress':
       options.progress = !!value && value !== 'false'
@@ -54,8 +48,8 @@ function capabilitiesSource(prefix) {
   ].join('\n') + '\n\n')
 }
 
-function split2(str) {
-  var i = str.indexOf(' ')
+function split2(str, delim) {
+  var i = str.indexOf(delim || ' ')
   return (i === -1) ? [str, ''] : [
     str.substr(0, i),
     str.substr(i + 1)
@@ -67,9 +61,9 @@ function split3(str) {
   return [args[0]].concat(split2(args[1]))
 }
 
-function optionSource(cmd) {
+function optionSource(cmd, options) {
   var args = split2(cmd)
-  var msg = handleOption(args[0], args[1])
+  var msg = handleOption(options, args[0], args[1])
   msg = (msg === true) ? 'ok'
       : (msg === false) ? 'unsupported'
       : 'error ' + msg
@@ -143,7 +137,11 @@ function packLineEncode(read) {
   }
 }
 
-function packLineDecode(read) {
+function rev(str) {
+  return str === '0000000000000000000000000000000000000000' ? null : str
+}
+
+function packLineDecode(read, options) {
   var b = buffered(read)
   var readPrefix = b.chunks(4)
   var ended
@@ -165,13 +163,18 @@ function packLineDecode(read) {
   function readUpdate(abort, cb) {
     readPackLine(abort, function (end, line) {
       if (end) return cb(end)
-      console.error('line', line.toString('ascii'))
+      if (options.verbosity >= 2)
+        console.error('line', line.toString('ascii'))
       if (!line.length) return cb(true)
       var args = split3(line.toString('ascii'))
+      var args2 = split2(args[2], '\0')
+      var caps = args2[1]
+      if (caps && options.verbosity >= 2)
+        console.error('update capabilities:', caps)
       cb(null, {
-        old: args[0],
-        new: args[1],
-        name: args[2]
+        old: rev(args[0]),
+        new: rev(args[1]),
+        name: args2[0]
       })
     })
   }
@@ -228,20 +231,7 @@ function receivePackHeader(capabilities, refSource, usePlaceholder) {
   }
 }
 
-function decodePack(read) {
-  var objects = pushable()
-  var decode = packCodec.decodePack(function (obj) {
-    if (obj) objects.push(obj)
-    else     objects.end()
-  })
-  read(null, function next(end, data) {
-    if (end) decode()
-    else     decode(data)
-  })
-  return objects
-}
-
-function receivePack(read, objectSink, refSource, refSink) {
+function receivePack(read, objectSink, refSource, refSink, options) {
   var ended
   var sendRefs = receivePackHeader([], refSource, true)
 
@@ -253,7 +243,7 @@ function receivePack(read, objectSink, refSource, refSink) {
       function (abort, cb) {
         if (abort) return
         // receive their refs
-        var lines = packLineDecode(read)
+        var lines = packLineDecode(read, options)
         pull(
           lines.updates,
           onThroughEnd(refsDone),
@@ -261,17 +251,11 @@ function receivePack(read, objectSink, refSource, refSink) {
         )
         function refsDone(err) {
           if (err) return cb(err)
-          // receive the pack
           pull(
             lines.passthrough,
-            decodePack,
-            onThroughEnd(objectsDone),
+            pack.decode(cb),
             objectSink
           )
-        }
-        function objectsDone(err) {
-          if (err) return cb(err)
-          cb(true)
         }
       },
       pull.once('unpack ok')
@@ -299,6 +283,11 @@ module.exports = function (opts) {
   var refSource = opts.refSource || pull.empty()
   var refSink = opts.refSink
 
+  var options = {
+    verbosity: 1,
+    progress: false
+  }
+
   function handleConnect(cmd, read) {
     var args = split2(cmd)
     switch (args[0]) {
@@ -306,7 +295,7 @@ module.exports = function (opts) {
         return prepend('\n', uploadPack(read, objectSource, refSource))
       case 'git-receive-pack':
         return prepend('\n', receivePack(read, objectSink, refSource,
-          refSink))
+          refSink, options))
       default:
         return pull.error(new Error('Unknown service ' + args[0]))
     }
@@ -322,7 +311,7 @@ module.exports = function (opts) {
       case 'connect':
         return handleConnect(args[1], read)
       case 'option':
-        return optionSource(args[1])
+        return optionSource(args[1], options)
       default:
         return pull.error(new Error('Unknown command ' + line))
     }
