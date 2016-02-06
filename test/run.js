@@ -7,6 +7,8 @@ var fs = require('fs')
 
 var env = Object.create(process.env)
 env.PATH = __dirname + ':' + env.PATH
+env.GIT_AUTHOR_DATE = env.GIT_COMMITTER_DATE = '1000000000 -0500'
+var author = 'root <root@localhost>'
 var remote = 'test.js://foo'
 
 var tmpDir = mktemp.createDirSync(path.join(require('os').tmpdir(), 'XXXXXXX'))
@@ -24,7 +26,13 @@ function git() {
 tape('init repo', function (t) {
   git('init', function (code) {
     t.equals(code, 0, 'inited')
-    t.end()
+    git('config', 'user.name', 'test', function (code) {
+      t.equals(code, 0, 'set user name')
+      git('config', 'user.email', 'test@localhost', function (code) {
+        t.equals(code, 0, 'set user email')
+        t.end()
+      })
+    })
   })
 })
 
