@@ -23,6 +23,11 @@ var objects = [
   {type: 'blob', object: repo.file}
 ]
 
+var hashes = {}
+hashes[repo.commit.hash] = 1
+hashes[repo.tree.hash] = 1
+hashes[repo.file.hash] = 1
+
 function streamObject(read) {
   var ended
   return function readObject(abort, cb) {
@@ -41,6 +46,9 @@ pull(
     wantSink: pull.drain(function (want) {
       process.send({want: want})
     }),
+    haveObject: function (hash, cb) {
+      cb(hash in hashes)
+    },
     getObjects: function (ancestorHash, cb) {
       cb(null, objects.length, pull(
         pull.values(objects),

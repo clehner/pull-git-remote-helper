@@ -63,7 +63,7 @@ function listRefs(read) {
 }
 
 // upload-pack: fetch to client
-function uploadPack(read, getObjects, refSource, wantSink, options) {
+function uploadPack(read, haveObject, getObjects, refSource, wantSink, options) {
   /* multi_ack thin-pack side-band side-band-64k ofs-delta shallow no-progress
    * include-tag multi_ack_detailed symref=HEAD:refs/heads/master
    * agent=git/2.7.0 */
@@ -76,11 +76,6 @@ function uploadPack(read, getObjects, refSource, wantSink, options) {
   var commonHash
   var sendPack
   var earlyDisconnect
-
-  function haveObject(hash, cb) {
-    cb(/* TODO */)
-    // cb(true)
-  }
 
   // Packfile negotiation
   return cat([
@@ -254,28 +249,6 @@ function packLineDecode(read, options) {
     }
   }
 
-  /*
-  function readWant(abort, cb) {
-    readPackLine(abort, function (end, line) {
-      if (end) return cb(end)
-      if (options.verbosity >= 2)
-        console.error('line', line.toString('ascii'))
-      if (!line.length || line == 'done') {
-        console.error('WANTS done', line, line.length)
-        return cb(true)
-      }
-      var args = split3(line.toString('ascii'))
-      var caps = args[2]
-      if (caps && options.verbosity >= 2)
-        console.error('want capabilities:', caps)
-      cb(null, {
-        type: args[0],
-        hash: args[1].replace(/\n$/, ''),
-      })
-    })
-  }
-  */
-
   b.packLines = readPackLine
   b.updates = readUpdate
   b.wants = b.haves = havesWants
@@ -379,6 +352,7 @@ function prepend(data, read) {
 module.exports = function (opts) {
   var ended
   var objectSink = opts.objectSink
+  var haveObject = opts.haveObject || function (hash, cb) { cb(false) }
   var getObjects = opts.getObjects || function (id, cb) {
     cb(null, 0, pull.empty())
   }
@@ -395,7 +369,7 @@ module.exports = function (opts) {
     var args = split2(cmd)
     switch (args[0]) {
       case 'git-upload-pack':
-        return prepend('\n', uploadPack(read, getObjects, refSource,
+        return prepend('\n', uploadPack(read, haveObject, getObjects, refSource,
           wantSink, options))
       case 'git-receive-pack':
         return prepend('\n', receivePack(read, objectSink, refSource,
