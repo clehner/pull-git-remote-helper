@@ -3,8 +3,12 @@ var pull = require('pull-stream')
 var toPull = require('stream-to-pull-stream')
 var Inflate = require('pako/lib/inflate').Inflate
 var createHash = require('./util').createHash
+var cat = require('pull-cat')
 
 exports.decode = decodePack
+exports.encode = encodePack
+
+var PACK_VERSION = 2
 
 var objectTypes = [
   'none', 'commit', 'tree', 'blob',
@@ -170,4 +174,29 @@ function decodePack(onEnd, read) {
   }
 
   return readObject
+}
+
+function encodePack(numObjects, readObject) {
+  var ended
+  var header = new Buffer(12)
+  header.write('PACK')
+  header.writeUInt32BE(PACK_VERSION, 4)
+  header.writeUInt32BE(numObjects, 8)
+  var checksum = createHash('sha1')
+
+  return pull.through(function (data) {
+    console.error('> ' + data.length, data.toString())
+  })(cat([
+    checksum(cat([
+      pull.once(header),
+      function (abort, cb) {
+        if (ended) return cb(ended)
+        readObject(abort, function (end, type, length, read) {
+          if (ended = end) return cb(end)
+          console.error('TODO: encode object')
+        })
+      }
+    ])),
+    checksum.readDigest
+  ]))
 }

@@ -71,28 +71,92 @@ function uploadPack(read, objectSource, refSource, wantSink, options) {
   var sendRefs = receivePackHeader([
   ], refSource, false)
 
+  var lines = packLineDecode(read, options)
+  // var havesSink = pull.drain(console.error.bind(console, 'have:'))
+  var readHave = lines.haves
+  var acked
+  var commonHash
+  var sendPack
+
+  function haveObject(hash, cb) {
+    cb(/* TODO */)
+  }
+
+  function getObjects(commonObjId, cb) {
+    console.error('get obj', commonObjId)
+    cb(null, 0, function readObject(end, cb) {
+      console.error('read obj', end)
+      // cb(new Error('Not implemented'))
+      cb(true)
+    })
+  }
+
+  // Packfile negotiation
   return packLineEncode(
     cat([
       sendRefs,
       pull.once(''),
       function (abort, cb) {
         if (abort) return
-        // read client wants
-        var lines = packLineDecode(read, options)
+        if (acked) return cb(true)
+        // read upload request (wants list) from client
         pull(
           lines.wants,
           onThroughEnd(wantsDone),
           wantSink
         )
+
         function wantsDone(err) {
+          console.error('wants done', err)
           if (err) return cb(err)
+          // Read upload haves (haves list).
+          // On first obj-id that we have, ACK
+          // If we have none, NAK.
+          // TODO: implement multi_ack_detailed
+          readHave(null, function next(end, have) {
+            ended = end
+            if (end === true) {
+              // found no common object
+              acked = true
+              cb(null, 'NAK')
+            } else if (end)
+              cb(end)
+            else if (have.type != 'have')
+              cb(new Error('Unknown have' + JSON.stringify(have)))
+            else
+              haveObject(have.hash, function (haveIt) {
+                if (!haveIt)
+                  return readHave(null, next)
+                commonHash = haveIt
+                acked = true
+                cb(null, 'ACK ' + have.hash)
+              })
+          })
+        }
+        /*
+        function havesDone(err) {
+          console.error('haves done', err)
+          if (err) return cb(err)
+          cb(true)
           pull(
             lines.passthrough,
             pull.drain(function (buf) {
-              console.error('got buf after wants', buf.toString('ascii'))
+              console.error('got buf after wants', buf.length, buf.toString('ascii'))
             })
           )
         }
+        */
+      },
+      function next(abort, cb) {
+        if (abort) return cb(abort)
+        // send pack file to client
+        if (!sendPack)
+          getObjects(commonHash, function (err, numObjects, readObject) {
+            sendPack = pack.encode(numObjects, readObject)
+            next(abort, cb)
+          })
+        else
+          sendPack(abort, cb)
       }
     ])
   )
@@ -106,8 +170,16 @@ function packLineEncode(read) {
       if (ended = end) {
         cb(end)
       } else {
-        var len = data ? data.length + 5 : 0
-        cb(end, ('000' + len.toString(16)).substr(-4) + data + '\n')
+        // console.error("data", data)
+        if (data)
+          data += '\n'
+        else
+          data = ''
+        var len = data ? data.length + 4 : 0
+        var hexLen = ('000' + len.toString(16)).substr(-4)
+        var pkt = hexLen + data
+        // console.error('>', JSON.stringify(pkt))
+        cb(end, pkt)
       }
     })
   }
@@ -123,6 +195,7 @@ function packLineDecode(read, options) {
   var ended
 
   function readPackLine(abort, cb) {
+    if (ended) return cb(ended)
     readPrefix(abort, function (end, buf) {
       if (ended = end) return cb(end)
       var len = parseInt(buf, 16)
@@ -133,6 +206,19 @@ function packLineDecode(read, options) {
         if (ended = end) return cb(end)
         cb(end, buf)
       })
+    })
+  }
+
+  function readPackLineStr(abort, cb) {
+    if (ended) return cb(ended)
+    readPackLine(abort, function (end, buf) {
+      if (ended = end) return cb(end)
+      // trim newline
+      var len = buf.length
+      if (buf[len - 1] == 0xa)
+        len--
+      var line = buf.toString('ascii', 0, len)
+      cb(null, line)
     })
   }
 
@@ -156,12 +242,13 @@ function packLineDecode(read, options) {
   }
 
   function readWant(abort, cb) {
-    readPackLine(abort, function (end, line) {
+    readPackLineStr(abort, function (end, line) {
       if (end) return cb(end)
       if (options.verbosity >= 2)
-        console.error('line', line.toString('ascii'))
+        console.error('line', line)
+      // if (!line.length) return cb(true)
       if (!line.length || line == 'done') return cb(true)
-      var args = split3(line.toString('ascii'))
+      var args = split3(line)
       var caps = args[2]
       if (caps && options.verbosity >= 2)
         console.error('want capabilities:', caps)
@@ -172,9 +259,31 @@ function packLineDecode(read, options) {
     })
   }
 
+  /*
+  function readWant(abort, cb) {
+    readPackLine(abort, function (end, line) {
+      if (end) return cb(end)
+      if (options.verbosity >= 2)
+        console.error('line', line.toString('ascii'))
+      if (!line.length || line == 'done') {
+        console.error('WANTS done', line, line.length)
+        return cb(true)
+      }
+      var args = split3(line.toString('ascii'))
+      var caps = args[2]
+      if (caps && options.verbosity >= 2)
+        console.error('want capabilities:', caps)
+      cb(null, {
+        type: args[0],
+        hash: args[1].replace(/\n$/, ''),
+      })
+    })
+  }
+  */
+
   b.packLines = readPackLine
   b.updates = readUpdate
-  b.wants = readWant
+  b.wants = b.haves = readWant
 
   return b
 }

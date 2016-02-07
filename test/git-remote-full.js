@@ -22,7 +22,6 @@ pull(
     prefix: 'foo',
     refSource: pull.values(refs),
     wantSink: pull.drain(function (want) {
-      console.error('got want', want)
       process.send({want: want})
     }),
   }),

@@ -21,6 +21,10 @@ var remote = {
 }
 
 var tmpDir = mktemp.createDirSync(path.join(require('os').tmpdir(), 'XXXXXXX'))
+tape.onFinish(function () {
+  if (tmpDir)
+    rimraf.sync(tmpDir)
+})
 
 function handleIpcMessage(t, cb) {
   return function (msg) {
@@ -150,16 +154,29 @@ tape('make a commit and push', function (t) {
   })
 })
 
-tape('fetch', function (t) {
+0 &&
+tape('fetch when already up-to-date', function (t) {
   t.git('fetch', '-vv', remote.full, function (msg) {
-    t.notOk('should not get a message here', msg)
+    t.notOk(msg, 'should not get a message here')
   }, function (code) {
     t.equals(code, 0, 'fetched')
     t.end()
   })
 })
 
-tape.onFinish(function () {
-  if (tmpDir)
-    rimraf.sync(tmpDir)
+0 &&
+tape('clone into new dir', function (t) {
+  var dir = path.join(tmpDir, 'clonedir')
+  t.plan(3)
+  t.git('clone', '-vv', remote.full, dir, function (msg) {
+    if (msg.want)
+      t.deepEquals(msg.want, {
+	type: 'want',
+	hash: 'edb5b50e8019797925820007d318870f8c346726'
+      }, 'got want')
+    else
+      t.notOk(msg, 'unexpected message')
+  }, function (code) {
+    t.equals(code, 0, 'cloned')
+  })
 })
