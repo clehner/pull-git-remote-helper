@@ -28,19 +28,8 @@ function capabilitiesCmd(read) {
   })
 }
 
-// return a source that delivers some data and then ends
-// TODO: use pull.once and abortCb for this
-function endSource(data) {
-  var done
-  return function (end, cb) {
-    if (done) return cb(true)
-    done = true
-    cb(null, data)
-  }
-}
-
 function capabilitiesSource(prefix) {
-  return endSource([
+  return pull.once([
     'option',
     'connect',
     'refspec refs/heads/*:refs/' + prefix + '/heads/*',
@@ -67,11 +56,11 @@ function optionSource(cmd, options) {
   msg = (msg === true) ? 'ok'
       : (msg === false) ? 'unsupported'
       : 'error ' + msg
-  return endSource(msg + '\n')
+  return pull.once(msg + '\n')
 }
 
 function listSource() {
-  return endSource([
+  return pull.once([
     /* TODO */
   ].join('\n') + '\n\n')
 }
