@@ -18,16 +18,6 @@ function handleOption(options, name, value) {
   }
 }
 
-function capabilitiesCmd(read) {
-  read(null, function next(end, data) {
-    if(end === true) return
-    if(end) throw end
-
-    console.log(data)
-    read(null, next)
-  })
-}
-
 function capabilitiesSource(prefix) {
   return pull.once([
     'option',
@@ -65,16 +55,6 @@ function listSource() {
   ].join('\n') + '\n\n')
 }
 
-function createHash() {
-  var hash = crypto.createHash('sha256')
-  var hasher = pull.through(function (data) {
-    hash.update(data)
-  }, function () {
-    hasher.digest = '&'+hash.digest('base64')+'.sha256'
-  })
-  return hasher
-}
-
 function uploadPack(read, objectSource, refSource) {
   /* multi_ack thin-pack side-band side-band-64k ofs-delta shallow no-progress
    * include-tag multi_ack_detailed symref=HEAD:refs/heads/master
@@ -88,27 +68,6 @@ function uploadPack(read, objectSource, refSource) {
       pull.once('')
     ])
   )
-}
-
-function getRefs() {
-  return pull.values([
-    {
-      hash: '78beaedba9878623cea3862cf18e098cfb901e10',
-      name: 'refs/heads/master'
-    },
-    {
-      hash: '78beaedba9878623cea3862cf18e098cfb901e10',
-      name: 'refs/remotes/cel/master'
-    }
-  ])
-  /*
-  return function (err, cb) {
-    if (err === true) return
-    if (err) throw err
-    // TODO
-    cb(true)
-  }
-  */
 }
 
 function packLineEncode(read) {
@@ -353,4 +312,3 @@ module.exports = function (opts) {
     }
   }
 }
-
