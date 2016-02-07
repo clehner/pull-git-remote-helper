@@ -14,7 +14,6 @@ process.on('uncaughtException', function (err) {
 pull(
   toPull(process.stdin),
   require('../../')({
-    prefix: 'foo',
     objectSink: function (readObject) {
       readObject(null, function next(end, type, length, read) {
         if (end === true) return

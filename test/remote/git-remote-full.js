@@ -37,7 +37,6 @@ function streamObject(read) {
 pull(
   toPull(process.stdin),
   require('../../')({
-    prefix: 'foo',
     refSource: pull.values(refs),
     wantSink: pull.drain(function (want) {
       process.send({want: want})

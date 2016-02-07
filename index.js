@@ -18,12 +18,10 @@ function handleOption(options, name, value) {
   }
 }
 
-function capabilitiesSource(prefix) {
+function capabilitiesSource() {
   return pull.once([
     'option',
     'connect',
-    'refspec refs/heads/*:refs/' + prefix + '/heads/*',
-    'refspec refs/tags/*:refs/' + prefix + '/tags/*',
   ].join('\n') + '\n\n')
 }
 
@@ -383,7 +381,6 @@ function prepend(data, read) {
 
 module.exports = function (opts) {
   var ended
-  var prefix = opts.prefix
   var objectSink = opts.objectSink
   var getObjects = opts.getObjects || function (id, cb) {
     cb(null, 0, pull.empty())
@@ -415,7 +412,7 @@ module.exports = function (opts) {
     var args = split2(line)
     switch (args[0]) {
       case 'capabilities':
-        return capabilitiesSource(prefix)
+        return capabilitiesSource()
       case 'list':
         return listRefs(refSource)
       case 'connect':
