@@ -79,6 +79,8 @@ function hexToStr(str) {
 }
 
 tape('make a commit and push', function (t) {
+  t.plan(8) // write, add, commit, push, ref, commit, tree, blob
+
   var file = {
     name: 'blah.txt',
     data: 'i am a file',
@@ -139,7 +141,6 @@ tape('make a commit and push', function (t) {
             t.notOk(msg, 'unexpected message')
         }, function (code) {
           t.equals(code, 0, 'pushed')
-          t.end()
         })
       })
     })

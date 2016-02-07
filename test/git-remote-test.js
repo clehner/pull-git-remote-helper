@@ -11,6 +11,25 @@ process.on('uncaughtException', function (err) {
   process.exit(1)
 })
 
+var objects = {}
+var refs = {}
+
+if (0)
+  refs['refs/heads/master'] = refs.HEAD = {
+    value: 'edb5b50e8019797925820007d318870f8c346726'
+  }
+
+function refsSource() {
+  var arr = []
+  for (var name in refs)
+    arr.push({
+      name: name,
+      value: refs[name].value,
+      attrs: refs[name].attrs
+    })
+  return pull.values(arr)
+}
+
 pull(
   toPull(process.stdin),
   require('../')({
@@ -38,8 +57,14 @@ pull(
       })
     },
     refSink: pull.drain(function (ref) {
+      refs[ref.name] = {value: ref.new}
+      console.error('got ref', refs)
       process.send({ref: ref})
     }),
+    refSource: function () {
+      console.error('sending refs', refs)
+      return refsSource()
+    }
   }),
   toPull(process.stdout, function (err) {
     if (err)

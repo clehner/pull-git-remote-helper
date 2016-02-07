@@ -49,23 +49,55 @@ function optionSource(cmd, options) {
   return pull.once(msg + '\n')
 }
 
-function listSource() {
-  return pull.once([
-    /* TODO */
-  ].join('\n') + '\n\n')
+// transform ref objects into lines
+function listRefs(read) {
+  var ended
+  return function (abort, cb) {
+    if (ended) return cb(ended)
+    read(abort, function (end, ref) {
+      ended = end
+      if (end === true) cb(null, '\n')
+      if (end) cb(end)
+      else cb(null,
+        [ref.value, ref.name].concat(ref.attrs || []).join(' ') + '\n')
+    })
+  }
 }
 
-function uploadPack(read, objectSource, refSource) {
+function uploadPack(read, objectSource, refSource, options) {
   /* multi_ack thin-pack side-band side-band-64k ofs-delta shallow no-progress
    * include-tag multi_ack_detailed symref=HEAD:refs/heads/master
    * agent=git/2.7.0 */
   var sendRefs = receivePackHeader([
   ], refSource, false)
 
+  var wantsSink = pull.drain(function (want) {
+    console.error('want', want)
+  })
+
   return packLineEncode(
     cat([
       sendRefs,
-      pull.once('')
+      pull.once(''),
+      function (abort, cb) {
+        if (abort) return
+        // read client wants
+        var lines = packLineDecode(read, options)
+        pull(
+          lines.wants,
+          onThroughEnd(wantsDone),
+          wantsSink
+        )
+        function wantsDone(err) {
+          if (err) return cb(err)
+          pull(
+            lines.passthrough,
+            pull.drain(function (buf) {
+              console.error('got buf after wants', buf)
+            })
+          )
+        }
+      }
     ])
   )
 }
@@ -127,8 +159,26 @@ function packLineDecode(read, options) {
     })
   }
 
+  function readWant(abort, cb) {
+    readPackLine(abort, function (end, line) {
+      if (end) return cb(end)
+      if (options.verbosity >= 2)
+        console.error('line', line.toString('ascii'))
+      if (!line.length || line == 'done') return cb(true)
+      var args = split3(line.toString('ascii'))
+      var caps = args[2]
+      if (caps && options.verbosity >= 2)
+        console.error('want capabilities:', caps)
+      cb(null, {
+        type: args[0],
+        hash: args[1],
+      })
+    })
+  }
+
   b.packLines = readPackLine
   b.updates = readUpdate
+  b.wants = readWant
 
   return b
 }
@@ -162,19 +212,19 @@ function receivePackHeader(capabilities, refSource, usePlaceholder) {
     refSource(abort, function (end, ref) {
       ended = end
       var name = ref && ref.name
-      var hash = ref && ref.hash
+      var value = ref && ref.value
       if (first && usePlaceholder) {
         first = false
         if (end) {
           // use placeholder data if there are no refs
-          hash = '0000000000000000000000000000000000000000'
+          value = '0000000000000000000000000000000000000000'
           name = 'capabilities^{}'
         }
         name += '\0' + capabilities.join(' ')
       } else if (end) {
         return cb(true)
       }
-      cb(null, hash + ' ' + name)
+      cb(null, value + ' ' + name)
     })
   }
 }
@@ -240,9 +290,10 @@ module.exports = function (opts) {
     var args = split2(cmd)
     switch (args[0]) {
       case 'git-upload-pack':
-        return prepend('\n', uploadPack(read, objectSource, refSource))
+        return prepend('\n', uploadPack(read, objectSource, refSource(),
+          options))
       case 'git-receive-pack':
-        return prepend('\n', receivePack(read, objectSink, refSource,
+        return prepend('\n', receivePack(read, objectSink, refSource(),
           refSink, options))
       default:
         return pull.error(new Error('Unknown service ' + args[0]))
@@ -255,7 +306,7 @@ module.exports = function (opts) {
       case 'capabilities':
         return capabilitiesSource(prefix)
       case 'list':
-        return listSource()
+        return listRefs(refSource())
       case 'connect':
         return handleConnect(args[1], read)
       case 'option':
