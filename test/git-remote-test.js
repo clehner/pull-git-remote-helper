@@ -2,6 +2,7 @@
 
 var toPull = require('stream-to-pull-stream')
 var pull = require('pull-stream')
+var util = require('../util')
 
 process.on('uncaughtException', function (err) {
   if (err.stack)
@@ -15,15 +16,22 @@ pull(
   require('../')({
     prefix: 'foo',
     objectSink: function (readObject) {
-      readObject(null, function next(end, type, read) {
+      readObject(null, function next(end, type, length, read) {
         if (end === true) return
         if (end) throw end
+        var hasher = util.createGitObjectHash(type, length)
         pull(
           read,
+          hasher,
           pull.collect(function (err, bufs) {
             if (err) throw err
-            var data = Buffer.concat(bufs).toString('ascii')
-            process.send({object: {type: type, data: data}})
+            var buf = Buffer.concat(bufs)
+            process.send({object: {
+              type: type,
+              data: buf.toString('ascii'),
+              length: length,
+              hash: hasher.digest('hex')
+            }})
             readObject(null, next)
           })
         )

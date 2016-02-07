@@ -1,8 +1,8 @@
 var buffered = require('pull-buffered')
-var crypto = require('crypto')
 var pull = require('pull-stream')
 var toPull = require('stream-to-pull-stream')
 var Inflate = require('pako/lib/inflate').Inflate
+var createHash = require('./util').createHash
 
 exports.decode = decodePack
 
@@ -15,13 +15,6 @@ function error(cb) {
   return function (err) {
     cb(err || true)
   }
-}
-
-function createHash(type) {
-  var hash = crypto.createHash(type)
-  var hasher = pull.through(hash.update.bind(hash))
-  hasher.digest = hash.digest.bind(hash)
-  return hasher
 }
 
 function inflateBytes(read) {
@@ -146,7 +139,7 @@ function decodePack(onEnd, read) {
         onEnd(new Error('Missing checksum'))
       if (ended = end) return cb(end)
       // TODO: verify that the inflated data is the correct length
-      cb(null, type, inflateBytes(readByte))
+      cb(null, type, length, inflateBytes(readByte))
     })
   }
 

@@ -14,7 +14,7 @@ var user = {
   name: 'test',
   email: 'test@localhost'
 }
-var userStr = user.name + ' <' + user.email + '>'
+user.str = user.name + ' <' + user.email + '>'
 var remote = 'test.js://foo'
 
 var tmpDir = mktemp.createDirSync(path.join(require('os').tmpdir(), 'XXXXXXX'))
@@ -72,40 +72,59 @@ tape('push with empty repo', function (t) {
   })
 })
 
+function hexToStr(str) {
+  var buf = new Buffer(str.length / 2)
+  buf.hexWrite(str)
+  return buf.toString('ascii')
+}
+
 tape('make a commit and push', function (t) {
+  var file = {
+    name: 'blah.txt',
+    data: 'i am a file',
+    hash: '68bd10497ea68e91fa85024d0a0b2fe54e212914'
+  }
+
+  var tree = {
+    hash: '75c54aa020772a916853987a03bff7079463a861',
+    data: '100644 ' + file.name + '\0' + hexToStr(file.hash)
+  }
+
   var commitMessage = 'Initial commit'
-  var fileName = 'blah.txt'
-  var fileContents = 'i am a file'
-  var fileHash = '68bd10497ea68e91fa85024d0a0b2fe54e212914'
-  var treeHash = '75c54aa020772a916853987a03bff7079463a861'
-  var commitHash = 'edb5b50e8019797925820007d318870f8c346726'
-  var fileHashBuf = new Buffer(20)
-  fileHashBuf.hexWrite(fileHash)
+  var commit = {
+    hash: 'edb5b50e8019797925820007d318870f8c346726',
+    data: ['tree ' + tree.hash,
+      'author ' + user.str + ' 1000000000 -0500',
+      'committer ' + user.str + ' 1000000000 -0500',
+      '', commitMessage, ''
+    ].join('\n')
+  }
+
+  function obj(type, o) {
+    return {
+      type: type,
+      data: o.data,
+      length: o.data.length,
+      hash: o.hash
+    }
+  }
 
   var objects = t.items(t.deepEquals, [
-    [{
-      type: 'commit',
-      data: 'tree ' + treeHash + '\nauthor ' + userStr + ' 1000000000 -0500\ncommitter ' + userStr + ' 1000000000 -0500\n\n' + commitMessage + '\n'
-    }, 'got the commit'],
-    [{
-      type: 'tree',
-      data: '100644 ' + fileName + '\0' + fileHashBuf.toString('ascii')
-    }, 'got the tree'],
-    [{
-      type: 'blob', data: fileContents
-    }, 'got the blob']
+    [obj('commit', commit), 'got the commit'],
+    [obj('tree', tree), 'got the tree'],
+    [obj('blob', file), 'got the blob']
   ])
 
   var refs = t.items(t.deepEquals, [
     [{
       name: 'refs/heads/master',
-      new: commitHash,
+      new: commit.hash,
       old: null
     }, 'got the ref']
   ])
 
-  var filePath = path.join(tmpDir, fileName)
-  fs.writeFile(filePath, fileContents, function (err) {
+  var filePath = path.join(tmpDir, file.name)
+  fs.writeFile(filePath, file.data, function (err) {
     t.error(err, 'wrote a file')
     t.git('add', filePath, function (code) {
       t.equals(code, 0, 'added file')
