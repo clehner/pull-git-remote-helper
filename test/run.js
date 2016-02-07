@@ -15,7 +15,10 @@ var user = {
   email: 'test@localhost'
 }
 user.str = user.name + ' <' + user.email + '>'
-var remote = 'test.js://foo'
+var remote = {
+  empty: 'empty.js://',
+  full: 'full.js://'
+}
 
 var tmpDir = mktemp.createDirSync(path.join(require('os').tmpdir(), 'XXXXXXX'))
 
@@ -65,7 +68,7 @@ tape('init repo', function (t) {
 })
 
 tape('push with empty repo', function (t) {
-  t.git('push', remote, function (msg) {
+  t.git('push', remote.empty, function (msg) {
   }, function (code) {
     t.equals(code, 0, 'pushed')
     t.end()
@@ -132,7 +135,7 @@ tape('make a commit and push', function (t) {
       t.equals(code, 0, 'added file')
       t.git('commit', '-m', commitMessage, function (code) {
         t.equals(code, 0, 'made initial commit')
-        t.git('push', '-vv', remote, 'master', function (msg) {
+        t.git('push', '-vv', remote.empty, 'master', function (msg) {
           if (msg.object)
             objects(msg.object)
           else if (msg.ref)
@@ -147,14 +150,12 @@ tape('make a commit and push', function (t) {
   })
 })
 
-/*
 tape('fetch', function (t) {
-  t.git('fetch', '-vv', remote, function (code) {
+  t.git('fetch', '-vv', remote.full, function (code) {
     t.equals(code, 0, 'fetched')
     t.end()
   })
 })
-*/
 
 tape.onFinish(function () {
   if (tmpDir)

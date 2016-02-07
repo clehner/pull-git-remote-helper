@@ -14,11 +14,6 @@ process.on('uncaughtException', function (err) {
 var objects = {}
 var refs = {}
 
-if (0)
-  refs['refs/heads/master'] = refs.HEAD = {
-    value: 'edb5b50e8019797925820007d318870f8c346726'
-  }
-
 function refsSource() {
   var arr = []
   for (var name in refs)

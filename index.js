@@ -279,7 +279,7 @@ module.exports = function (opts) {
   var objectSink = opts.objectSink
   var objectSource = opts.objectSource || pull.empty()
   var refSource = opts.refSource || pull.empty()
-  var refSink = opts.refSink
+  var refSink = opts.refSink || pull.drain()
 
   var options = {
     verbosity: 1,
