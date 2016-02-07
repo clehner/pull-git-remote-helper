@@ -151,7 +151,9 @@ tape('make a commit and push', function (t) {
 })
 
 tape('fetch', function (t) {
-  t.git('fetch', '-vv', remote.full, function (code) {
+  t.git('fetch', '-vv', remote.full, function (msg) {
+    t.notOk('should not get a message here', msg)
+  }, function (code) {
     t.equals(code, 0, 'fetched')
     t.end()
   })

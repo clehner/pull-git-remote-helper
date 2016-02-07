@@ -10,31 +10,21 @@ process.on('uncaughtException', function (err) {
   process.exit(1)
 })
 
-var objects = {}
-
-var ref = {value: 'edb5b50e8019797925820007d318870f8c346726'}
-var refs = {
-  'refs/heads/master': ref,
-  HEAD: ref
-}
-
-function refsSource() {
-  console.error('sending refs', refs)
-  var arr = []
-  for (var name in refs)
-    arr.push({
-      name: name,
-      value: refs[name].value,
-      attrs: refs[name].attrs
-    })
-  return pull.values(arr)
-}
+var HEAD = 'edb5b50e8019797925820007d318870f8c346726'
+var refs = [
+  {name: 'refs/heads/master', value: HEAD},
+  {name: 'HEAD', value: HEAD}
+]
 
 pull(
   toPull(process.stdin),
   require('../')({
     prefix: 'foo',
-    refSource: refsSource
+    refSource: pull.values(refs),
+    wantSink: pull.drain(function (want) {
+      console.error('got want', want)
+      process.send({want: want})
+    }),
   }),
   toPull(process.stdout, function (err) {
     if (err)

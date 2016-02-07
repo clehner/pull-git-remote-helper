@@ -64,16 +64,12 @@ function listRefs(read) {
   }
 }
 
-function uploadPack(read, objectSource, refSource, options) {
+function uploadPack(read, objectSource, refSource, wantSink, options) {
   /* multi_ack thin-pack side-band side-band-64k ofs-delta shallow no-progress
    * include-tag multi_ack_detailed symref=HEAD:refs/heads/master
    * agent=git/2.7.0 */
   var sendRefs = receivePackHeader([
   ], refSource, false)
-
-  var wantsSink = pull.drain(function (want) {
-    console.error('want', want)
-  })
 
   return packLineEncode(
     cat([
@@ -86,14 +82,14 @@ function uploadPack(read, objectSource, refSource, options) {
         pull(
           lines.wants,
           onThroughEnd(wantsDone),
-          wantsSink
+          wantSink
         )
         function wantsDone(err) {
           if (err) return cb(err)
           pull(
             lines.passthrough,
             pull.drain(function (buf) {
-              console.error('got buf after wants', buf)
+              console.error('got buf after wants', buf.toString('ascii'))
             })
           )
         }
@@ -280,6 +276,7 @@ module.exports = function (opts) {
   var objectSource = opts.objectSource || pull.empty()
   var refSource = opts.refSource || pull.empty()
   var refSink = opts.refSink || pull.drain()
+  var wantSink = opts.wantSink || pull.drain()
 
   var options = {
     verbosity: 1,
@@ -290,10 +287,10 @@ module.exports = function (opts) {
     var args = split2(cmd)
     switch (args[0]) {
       case 'git-upload-pack':
-        return prepend('\n', uploadPack(read, objectSource, refSource(),
-          options))
+        return prepend('\n', uploadPack(read, objectSource, refSource,
+          wantSink, options))
       case 'git-receive-pack':
-        return prepend('\n', receivePack(read, objectSink, refSource(),
+        return prepend('\n', receivePack(read, objectSink, refSource,
           refSink, options))
       default:
         return pull.error(new Error('Unknown service ' + args[0]))
@@ -306,7 +303,7 @@ module.exports = function (opts) {
       case 'capabilities':
         return capabilitiesSource(prefix)
       case 'list':
-        return listRefs(refSource())
+        return listRefs(refSource)
       case 'connect':
         return handleConnect(args[1], read)
       case 'option':
