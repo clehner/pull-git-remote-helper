@@ -7,7 +7,7 @@ var fs = require('fs')
 var repo = require('./repo')
 
 var env = Object.create(process.env)
-env.PATH = __dirname + ':' + env.PATH
+env.PATH = path.join(__dirname, 'remote') + ':' + env.PATH
 env.GIT_AUTHOR_DATE = env.GIT_COMMITTER_DATE = repo.date
 var user = repo.user
 var remote = {

@@ -2,7 +2,7 @@
 
 var toPull = require('stream-to-pull-stream')
 var pull = require('pull-stream')
-var repo = require('./repo')
+var repo = require('../repo')
 
 process.on('uncaughtException', function (err) {
   if (err.stack)
@@ -36,7 +36,7 @@ function streamObject(read) {
 
 pull(
   toPull(process.stdin),
-  require('../')({
+  require('../../')({
     prefix: 'foo',
     refSource: pull.values(refs),
     wantSink: pull.drain(function (want) {

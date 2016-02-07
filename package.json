@@ -4,7 +4,7 @@
   "description": "use pull-streams to make gitremote-helpers(1)",
   "main": "index.js",
   "scripts": {
-    "test": "node test/run.js"
+    "test": "tape test/*.js"
   },
   "repository": {
     "type": "git",

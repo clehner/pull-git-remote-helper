@@ -2,7 +2,7 @@
 
 var toPull = require('stream-to-pull-stream')
 var pull = require('pull-stream')
-var util = require('../util')
+var util = require('../../util')
 
 process.on('uncaughtException', function (err) {
   if (err.stack)
@@ -13,7 +13,7 @@ process.on('uncaughtException', function (err) {
 
 pull(
   toPull(process.stdin),
-  require('../')({
+  require('../../')({
     prefix: 'foo',
     objectSink: function (readObject) {
       readObject(null, function next(end, type, length, read) {
