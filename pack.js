@@ -76,21 +76,12 @@ function deflate(read) {
   }
 
   return function readOut(abort, cb) {
-    /*
-    function _cb(end, data) {
-      console.error('sending deflated', end,
-        data && JSON.stringify(data.toString()))
-      cb(end, data)
-    }
-    */
     if (ended) 
       cb(ended)
     else if (queue.length)
       cb.apply(this, queue.shift())
     else
       read(abort, function next(end, data) {
-        if (data)
-          console.error('read into deflat', data.length, JSON.stringify(data))
         if (end === true) def.push([], true)
         else if (end) return cb(end)
         else def.push(data)
@@ -113,7 +104,7 @@ function decodePack(onEnd, read) {
   var readChecksum = b.chunks(20)
   var expectChecksum = true
   var opts = {
-    verbosity: 2
+    verbosity: 0
   }
 
   function readHeader(cb) {
@@ -155,7 +146,7 @@ function decodePack(onEnd, read) {
       var firstByte = buf[0]
       type = objectTypes[(firstByte >> 4) & 7]
       value = firstByte & 15
-      console.error('byte1', firstByte, firstByte.toString(2), value, value.toString(2))
+      // console.error('byte1', firstByte, firstByte.toString(2))
       shift = 4
       checkByte(firstByte)
     })
@@ -172,7 +163,7 @@ function decodePack(onEnd, read) {
       var byte = buf[0]
       value += (byte & 0x7f) << shift
       shift += 7
-      console.error('byte', byte, byte.toString(2), value, value.toString(2))
+      // console.error('byte', byte, byte.toString(2))
       checkByte(byte)
     }
   }
@@ -180,7 +171,7 @@ function decodePack(onEnd, read) {
   function getObject(cb) {
     readVarInt(function (end, type, length) {
       if (opts.verbosity >= 2)
-        console.error('read var int', end, type, length)
+        console.error('read object header', end, type, length)
       numObjects--
       if (end === true && expectChecksum)
         onEnd(new Error('Missing checksum'))
@@ -240,9 +231,11 @@ function encodeVarInt(typeStr, length, cb) {
     b = length & 0x7f
   }
   vals.push(b)
+  /*
   console.error('sending var int', vals, vals.map(function (n) {
     return ('00000000' + Number(n).toString(2)).substr(-8)
   }))
+  */
   cb(null, new Buffer(vals))
 }
 
@@ -272,11 +265,6 @@ function encodePack(numObjects, readObject) {
   var checksum = createHash('sha1')
   var readData
 
-  /*
-  return pull.through(function (data) {
-    console.error('> ' + data.length, JSON.stringify(data.toString('ascii')))
-  })(cat([
-  */
   return cat([
     checksum(cat([
       pull.once(header),
@@ -284,7 +272,6 @@ function encodePack(numObjects, readObject) {
     ])),
     checksum.readDigest
   ])
-  // )
 
   function encodeObject(abort, cb) {
     if (readData)
@@ -298,10 +285,9 @@ function encodePack(numObjects, readObject) {
       readObject(abort, nextObject)
     
     function nextObject(end, type, length, read) {
-      // console.error('got obj', end, type, length)
       if (end) return cb(end)
       readData = deflate(read)
-      encodeVarInt(type, length, cb) // nextCb(deflate(read), encodeObject))
+      encodeVarInt(type, length, cb)
     }
   }
 }

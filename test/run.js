@@ -18,7 +18,6 @@ var remote = {
 var tmpDir = mktemp.createDirSync(path.join(require('os').tmpdir(), 'XXXXXXX'))
 tape.onFinish(function () {
   if (tmpDir)
-    // console.error(tmpDir)
     rimraf.sync(tmpDir)
 })
 
@@ -113,7 +112,7 @@ tape('make a commit and push', function (t) {
       t.equals(code, 0, 'added file')
       t.git('commit', '-m', commitMessage, function (code) {
         t.equals(code, 0, 'made initial commit')
-        t.git('push', '-vv', remote.empty, 'master', function (msg) {
+        t.git('push', remote.empty, 'master', function (msg) {
           if (msg.object)
             objects(msg.object)
           else if (msg.ref)
@@ -129,7 +128,7 @@ tape('make a commit and push', function (t) {
 })
 
 tape('fetch when already up-to-date', function (t) {
-  t.git('fetch', '-vv', remote.full, function (msg) {
+  t.git('fetch', remote.full, function (msg) {
     t.notOk(msg, 'should not get a message here')
   }, function (code) {
     t.equals(code, 0, 'fetched')
@@ -137,11 +136,10 @@ tape('fetch when already up-to-date', function (t) {
   })
 })
 
-0 &&
 tape('clone into new dir', function (t) {
   var dir = path.join(tmpDir, 'clonedir')
   t.plan(2)
-  t.git('clone', '-vv', remote.full, dir, function (msg) {
+  t.git('clone', remote.full, dir, function (msg) {
     if (msg.want)
       t.deepEquals(msg.want, {
 	type: 'want',

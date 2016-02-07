@@ -42,7 +42,6 @@ pull(
       process.send({want: want})
     }),
     getObjects: function (ancestorHash, cb) {
-      // console.error('get obj!', ancestorHash)
       cb(null, objects.length, pull(
         pull.values(objects),
         streamObject

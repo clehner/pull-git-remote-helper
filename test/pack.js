@@ -10,10 +10,6 @@ var objects = [
   {type: 'blob', object: repo.file}
 ]
 
-function sha1(str) {
-  return require('crypto').createHash('sha1').update(str).digest('hex')
-}
-
 function streamObject(read) {
   var ended
   return function readObject(abort, cb) {
@@ -61,14 +57,6 @@ tape('pack', function (t) {
     }),
     bufferObject,
     pull.drain(function (obj) {
-      var a = obj.object
-      var b = objects[i].object
-      if (a.hash != b.hash)
-        console.error(new Buffer(b.data))
-        console.error(a.hash, b.hash, a.data.length, b.data.length,
-        a.data === b.data,
-        '"' + objects[i].type + ' ' + b.data.length + '\0' + b.data + '"',
-        sha1(objects[i].type + ' ' + b.data.length + '\0' + b.data))
       if (i < objects.length)
         t.deepEquals(obj, objects[i++])
       else

@@ -71,7 +71,6 @@ function uploadPack(read, getObjects, refSource, wantSink, options) {
   ], refSource, false)
 
   var lines = packLineDecode(read, options)
-  // var havesSink = pull.drain(console.error.bind(console, 'have:'))
   var readHave = lines.haves()
   var acked
   var commonHash
@@ -123,7 +122,6 @@ function uploadPack(read, getObjects, refSource, wantSink, options) {
             else if (have.type != 'have')
               cb(new Error('Unknown have' + JSON.stringify(have)))
             else
-              console.error('got have', have),
               haveObject(have.hash, function (haveIt) {
                 if (!haveIt)
                   return readHave(null, next)
@@ -158,7 +156,6 @@ function packLineEncode(read) {
       if (ended = end) {
         cb(end)
       } else {
-        // console.error("data", data)
         if (data)
           data += '\n'
         else
@@ -166,7 +163,7 @@ function packLineEncode(read) {
         var len = data ? data.length + 4 : 0
         var hexLen = ('000' + len.toString(16)).substr(-4)
         var pkt = hexLen + data
-        console.error('>', JSON.stringify(pkt))
+        // console.error('>', JSON.stringify(pkt))
         cb(end, pkt)
       }
     })
