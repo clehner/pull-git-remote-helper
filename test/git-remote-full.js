@@ -2,6 +2,7 @@
 
 var toPull = require('stream-to-pull-stream')
 var pull = require('pull-stream')
+var repo = require('./repo')
 
 process.on('uncaughtException', function (err) {
   if (err.stack)
@@ -16,6 +17,23 @@ var refs = [
   {name: 'HEAD', value: HEAD}
 ]
 
+var objects = [
+  {type: 'commit', object: repo.commit},
+  {type: 'tree', object: repo.tree},
+  {type: 'blob', object: repo.file}
+]
+
+function streamObject(read) {
+  var ended
+  return function readObject(abort, cb) {
+    read(abort, function (end, item) {
+      if (ended = end) return cb(end)
+      var data = item.object.data
+      cb(null, item.type, data.length, pull.once(data))
+    })
+  }
+}
+
 pull(
   toPull(process.stdin),
   require('../')({
@@ -24,6 +42,13 @@ pull(
     wantSink: pull.drain(function (want) {
       process.send({want: want})
     }),
+    getObjects: function (ancestorHash, cb) {
+      // console.error('get obj!', ancestorHash)
+      cb(null, objects.length, pull(
+        pull.values(objects),
+        streamObject
+      ))
+    }
   }),
   toPull(process.stdout, function (err) {
     if (err)

@@ -26,6 +26,7 @@ pull(
           pull.collect(function (err, bufs) {
             if (err) throw err
             var buf = Buffer.concat(bufs)
+            console.error('obj', type, length, JSON.stringify(buf.toString('ascii')))
             process.send({object: {
               type: type,
               data: buf.toString('ascii'),

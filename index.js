@@ -65,7 +65,7 @@ function listRefs(read) {
 }
 
 // upload-pack: fetch to client
-function uploadPack(read, objectSource, refSource, wantSink, options) {
+function uploadPack(read, getObjects, refSource, wantSink, options) {
   /* multi_ack thin-pack side-band side-band-64k ofs-delta shallow no-progress
    * include-tag multi_ack_detailed symref=HEAD:refs/heads/master
    * agent=git/2.7.0 */
@@ -74,7 +74,7 @@ function uploadPack(read, objectSource, refSource, wantSink, options) {
 
   var lines = packLineDecode(read, options)
   // var havesSink = pull.drain(console.error.bind(console, 'have:'))
-  var readHave = lines.haves
+  var readHave = lines.haves()
   var acked
   var commonHash
   var sendPack
@@ -82,58 +82,50 @@ function uploadPack(read, objectSource, refSource, wantSink, options) {
 
   function haveObject(hash, cb) {
     cb(/* TODO */)
-  }
-
-  function getObjects(commonObjId, cb) {
-    console.error('get obj', commonObjId)
-    cb(null, 0, function readObject(end, cb) {
-      console.error('read obj', end)
-      // cb(new Error('Not implemented'))
-      cb(true)
-    })
+    // cb(true)
   }
 
   // Packfile negotiation
-  return packLineEncode(
-    cat([
+  return cat([
+    packLineEncode(cat([
       sendRefs,
       pull.once(''),
       function (abort, cb) {
         if (abort) return
         if (acked) return cb(true)
         // read upload request (wants list) from client
-        pull(
-          lines.wants,
-          onThroughEnd(wantsDone),
-          wantSink
-        )
-
-        var gotAnyHaves = false
+        var readWant = lines.wants(wantsDone)
+        readWant(null, function (end, want) {
+          if (end === true) {
+            // client disconnected before sending wants
+            earlyDisconnect = true
+            cb(true)
+          } else if (end) {
+            cb(end)
+          } else {
+            wantSink(readWant)
+          }
+        })
 
         function wantsDone(err) {
-          console.error('wants done', err)
+          // console.error('wants done', err, earlyDisconnect)
           if (err) return cb(err)
+          if (earlyDisconnect) return cb(true)
           // Read upload haves (haves list).
           // On first obj-id that we have, ACK
           // If we have none, NAK.
           // TODO: implement multi_ack_detailed
           readHave(null, function next(end, have) {
             if (end === true) {
-              if (gotAnyHaves) {
-                // found no common object
-                acked = true
-                cb(null, 'NAK')
-              } else {
-                earlyDisconnect = true
-                // client disconnected before sending haves.
-                cb(true)
-              }
+              // found no common object
+              acked = true
+              cb(null, 'NAK')
             } else if (end)
               cb(end)
             else if (have.type != 'have')
               cb(new Error('Unknown have' + JSON.stringify(have)))
-            else {
-              gotAnyHaves = true
+            else
+              console.error('got have', have),
               haveObject(have.hash, function (haveIt) {
                 if (!haveIt)
                   return readHave(null, next)
@@ -141,37 +133,23 @@ function uploadPack(read, objectSource, refSource, wantSink, options) {
                 acked = true
                 cb(null, 'ACK ' + have.hash)
               })
-            }
           })
         }
-        /*
-        function havesDone(err) {
-          console.error('haves done', err)
-          if (err) return cb(err)
-          cb(true)
-          pull(
-            lines.passthrough,
-            pull.drain(function (buf) {
-              console.error('got buf after wants', buf.length, buf.toString('ascii'))
-            })
-          )
-        }
-        */
       },
-      function havesDone(abort, cb) {
-        console.error("haves done", abort && typeof abort, sendPack && typeof sendPack)
-        if (abort || earlyDisconnect) return cb(abort || true)
-        // send pack file to client
-        if (!sendPack)
-          getObjects(commonHash, function (err, numObjects, readObject) {
-            sendPack = pack.encode(numObjects, readObject)
-            havesDone(abort, cb)
-          })
-        else
-          sendPack(abort, cb)
-      }
-    ])
-  )
+    ])),
+    function havesDone(abort, cb) {
+      // console.error("haves done", abort && typeof abort, sendPack && typeof sendPack, abort, earlyDisconnect)
+      if (abort || earlyDisconnect) return cb(abort || true)
+      // send pack file to client
+      if (!sendPack)
+        getObjects(commonHash, function (err, numObjects, readObject) {
+          sendPack = pack.encode(numObjects, readObject)
+          havesDone(abort, cb)
+        })
+      else
+        sendPack(abort, cb)
+    }
+  ])
 }
 
 function packLineEncode(read) {
@@ -190,7 +168,7 @@ function packLineEncode(read) {
         var len = data ? data.length + 4 : 0
         var hexLen = ('000' + len.toString(16)).substr(-4)
         var pkt = hexLen + data
-        // console.error('>', JSON.stringify(pkt))
+        console.error('>', JSON.stringify(pkt))
         cb(end, pkt)
       }
     })
@@ -199,6 +177,13 @@ function packLineEncode(read) {
 
 function rev(str) {
   return str === '0000000000000000000000000000000000000000' ? null : str
+}
+
+/* pull-stream/source.js */
+function abortCb(cb, abort, onAbort) {
+  cb(abort)
+  onAbort && onAbort(abort === true ? null: abort)
+  return
 }
 
 function packLineDecode(read, options) {
@@ -253,22 +238,25 @@ function packLineDecode(read, options) {
     })
   }
 
-  function readWant(abort, cb) {
-    readPackLineStr(abort, function (end, line) {
-      if (end) return cb(end)
-      if (options.verbosity >= 2)
-        console.error('line', line)
-      // if (!line.length) return cb(true)
-      if (!line.length || line == 'done') return cb(true)
-      var args = split3(line)
-      var caps = args[2]
-      if (caps && options.verbosity >= 2)
-        console.error('want capabilities:', caps)
-      cb(null, {
-        type: args[0],
-        hash: args[1],
+  function havesWants(onEnd) {
+    return function readWant(abort, cb) {
+      readPackLineStr(abort, function (end, line) {
+        if (end) return abortCb(cb, end, onEnd)
+        if (options.verbosity >= 2)
+          console.error('line', line)
+        // if (!line.length) return cb(true)
+        if (!line.length || line == 'done')
+          return abortCb(cb, true, onEnd)
+        var args = split3(line)
+        var caps = args[2]
+        if (caps && options.verbosity >= 2)
+          console.error('want capabilities:', caps)
+        cb(null, {
+          type: args[0],
+          hash: args[1],
+        })
       })
-    })
+    }
   }
 
   /*
@@ -295,7 +283,7 @@ function packLineDecode(read, options) {
 
   b.packLines = readPackLine
   b.updates = readUpdate
-  b.wants = b.haves = readWant
+  b.wants = b.haves = havesWants
 
   return b
 }
@@ -397,7 +385,9 @@ module.exports = function (opts) {
   var ended
   var prefix = opts.prefix
   var objectSink = opts.objectSink
-  var objectSource = opts.objectSource || pull.empty()
+  var getObjects = opts.getObjects || function (id, cb) {
+    cb(null, 0, pull.empty())
+  }
   var refSource = opts.refSource || pull.empty()
   var refSink = opts.refSink || pull.drain()
   var wantSink = opts.wantSink || pull.drain()
@@ -411,7 +401,7 @@ module.exports = function (opts) {
     var args = split2(cmd)
     switch (args[0]) {
       case 'git-upload-pack':
-        return prepend('\n', uploadPack(read, objectSource, refSource,
+        return prepend('\n', uploadPack(read, getObjects, refSource,
           wantSink, options))
       case 'git-receive-pack':
         return prepend('\n', receivePack(read, objectSink, refSource,

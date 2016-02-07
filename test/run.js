@@ -4,17 +4,12 @@ var path = require('path')
 var mktemp = require('mktemp')
 var rimraf = require('rimraf')
 var fs = require('fs')
-
-function noop() {}
+var repo = require('./repo')
 
 var env = Object.create(process.env)
 env.PATH = __dirname + ':' + env.PATH
-env.GIT_AUTHOR_DATE = env.GIT_COMMITTER_DATE = '1000000000 -0500'
-var user = {
-  name: 'test',
-  email: 'test@localhost'
-}
-user.str = user.name + ' <' + user.email + '>'
+env.GIT_AUTHOR_DATE = env.GIT_COMMITTER_DATE = repo.date
+var user = repo.user
 var remote = {
   empty: 'empty.js://',
   full: 'full.js://'
@@ -79,35 +74,13 @@ tape('push with empty repo', function (t) {
   })
 })
 
-function hexToStr(str) {
-  var buf = new Buffer(str.length / 2)
-  buf.hexWrite(str)
-  return buf.toString('ascii')
-}
-
 tape('make a commit and push', function (t) {
   t.plan(8) // write, add, commit, push, ref, commit, tree, blob
 
-  var file = {
-    name: 'blah.txt',
-    data: 'i am a file',
-    hash: '68bd10497ea68e91fa85024d0a0b2fe54e212914'
-  }
-
-  var tree = {
-    hash: '75c54aa020772a916853987a03bff7079463a861',
-    data: '100644 ' + file.name + '\0' + hexToStr(file.hash)
-  }
-
-  var commitMessage = 'Initial commit'
-  var commit = {
-    hash: 'edb5b50e8019797925820007d318870f8c346726',
-    data: ['tree ' + tree.hash,
-      'author ' + user.str + ' 1000000000 -0500',
-      'committer ' + user.str + ' 1000000000 -0500',
-      '', commitMessage, ''
-    ].join('\n')
-  }
+  var file = repo.file
+  var commitMessage = repo.commitMessage
+  var commit = repo.commit
+  var tree = repo.tree
 
   function obj(type, o) {
     return {
@@ -166,7 +139,7 @@ tape('fetch when already up-to-date', function (t) {
 0 &&
 tape('clone into new dir', function (t) {
   var dir = path.join(tmpDir, 'clonedir')
-  t.plan(3)
+  t.plan(2)
   t.git('clone', '-vv', remote.full, dir, function (msg) {
     if (msg.want)
       t.deepEquals(msg.want, {

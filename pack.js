@@ -1,7 +1,7 @@
 var buffered = require('pull-buffered')
 var pull = require('pull-stream')
 var toPull = require('stream-to-pull-stream')
-var Inflate = require('pako/lib/inflate').Inflate
+var pako = require('pako')
 var createHash = require('./util').createHash
 var cat = require('pull-cat')
 
@@ -14,6 +14,12 @@ var objectTypes = [
   'none', 'commit', 'tree', 'blob',
   'tag', 'unused', 'ofs-delta', 'ref-delta'
 ]
+var objectTypeNums = {
+  commit: 1,
+  tree: 2,
+  blob: 3,
+  tag: 4
+}
 
 function error(cb) {
   return function (err) {
@@ -22,7 +28,7 @@ function error(cb) {
 }
 
 function inflateBytes(read) {
-  var inflate = new Inflate()
+  var inflate = new pako.Inflate()
   var ended, dataOut
 
   inflate.onData = function (data) {
@@ -53,6 +59,43 @@ function inflateBytes(read) {
       else
         read(null, next)
     })
+  }
+}
+
+function deflate(read) {
+  var def = new pako.Deflate()
+  var queue = []
+  var ended
+
+  def.onData = function (data) {
+    queue.push([null, new Buffer(data)])
+  }
+
+  def.onEnd = function (status) {
+    queue.push([(status === 0) ? true : new Error(def.msg)])
+  }
+
+  return function readOut(abort, cb) {
+    /*
+    function _cb(end, data) {
+      console.error('sending deflated', end,
+        data && JSON.stringify(data.toString()))
+      cb(end, data)
+    }
+    */
+    if (ended) 
+      cb(ended)
+    else if (queue.length)
+      cb.apply(this, queue.shift())
+    else
+      read(abort, function next(end, data) {
+        if (data)
+          console.error('read into deflat', data.length, JSON.stringify(data))
+        if (end === true) def.push([], true)
+        else if (end) return cb(end)
+        else def.push(data)
+        readOut(null, cb)
+      })
   }
 }
 
@@ -112,7 +155,7 @@ function decodePack(onEnd, read) {
       var firstByte = buf[0]
       type = objectTypes[(firstByte >> 4) & 7]
       value = firstByte & 15
-      // console.error('byte1', firstByte, firstByte.toString(2), value, value.toString(2))
+      console.error('byte1', firstByte, firstByte.toString(2), value, value.toString(2))
       shift = 4
       checkByte(firstByte)
     })
@@ -129,7 +172,7 @@ function decodePack(onEnd, read) {
       var byte = buf[0]
       value += (byte & 0x7f) << shift
       shift += 7
-      // console.error('byte', byte, byte.toString(2), value, value.toString(2))
+      console.error('byte', byte, byte.toString(2), value, value.toString(2))
       checkByte(byte)
     }
   }
@@ -176,27 +219,86 @@ function decodePack(onEnd, read) {
   return readObject
 }
 
+function once(read) {
+  var done
+  return function (abort, cb) {
+    if (done) cb(done)
+    else done = true, read(abort, cb)
+  }
+}
+
+function encodeVarInt(typeStr, length, cb) {
+  var type = objectTypeNums[typeStr]
+  // console.error('TYPE', type, typeStr, 'len', length, typeof cb)
+	if (!type)
+    return cb(new Error("Bad object type " + typeStr))
+
+  var vals = []
+  var b = (type << 4) | (length & 15)
+	for (length >>= 4; length; length >>= 7) {
+    vals.push(b | 0x80)
+    b = length & 0x7f
+  }
+  vals.push(b)
+  console.error('sending var int', vals, vals.map(function (n) {
+    return ('00000000' + Number(n).toString(2)).substr(-8)
+  }))
+  cb(null, new Buffer(vals))
+}
+
+/*
+function flow(read) {
+  return function (abort, cb) {
+    read(abort, cb, function nextCb(newRead, onEnd) {
+      read = newRead
+      return function (end, data) {
+        cb(end, data)
+        if (end) onEnd(end === true ? null : end)
+      }
+    })
+  }
+}
+*/
+
 function encodePack(numObjects, readObject) {
-  var ended
+  // var ended
   var header = new Buffer(12)
   header.write('PACK')
   header.writeUInt32BE(PACK_VERSION, 4)
   header.writeUInt32BE(numObjects, 8)
   var checksum = createHash('sha1')
+  var readData
 
+  /*
   return pull.through(function (data) {
-    console.error('> ' + data.length, data.toString())
+    console.error('> ' + data.length, JSON.stringify(data.toString('ascii')))
   })(cat([
+  */
+  return cat([
     checksum(cat([
       pull.once(header),
-      function (abort, cb) {
-        if (ended) return cb(ended)
-        readObject(abort, function (end, type, length, read) {
-          if (ended = end) return cb(end)
-          console.error('TODO: encode object')
-        })
-      }
+      encodeObject
     ])),
     checksum.readDigest
-  ]))
+  ])
+  // )
+
+  function encodeObject(abort, cb) {
+    if (readData)
+      readData(abort, function (end, data) {
+        if (end === true)
+          readObject(abort, nextObject)
+        else
+          cb(end, data)
+      })
+    else
+      readObject(abort, nextObject)
+    
+    function nextObject(end, type, length, read) {
+      // console.error('got obj', end, type, length)
+      if (end) return cb(end)
+      readData = deflate(read)
+      encodeVarInt(type, length, cb) // nextCb(deflate(read), encodeObject))
+    }
+  }
 }
