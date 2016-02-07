@@ -64,6 +64,7 @@ function listRefs(read) {
   }
 }
 
+// upload-pack: fetch to client
 function uploadPack(read, objectSource, refSource, wantSink, options) {
   /* multi_ack thin-pack side-band side-band-64k ofs-delta shallow no-progress
    * include-tag multi_ack_detailed symref=HEAD:refs/heads/master
@@ -77,6 +78,7 @@ function uploadPack(read, objectSource, refSource, wantSink, options) {
   var acked
   var commonHash
   var sendPack
+  var earlyDisconnect
 
   function haveObject(hash, cb) {
     cb(/* TODO */)
@@ -106,6 +108,8 @@ function uploadPack(read, objectSource, refSource, wantSink, options) {
           wantSink
         )
 
+        var gotAnyHaves = false
+
         function wantsDone(err) {
           console.error('wants done', err)
           if (err) return cb(err)
@@ -114,16 +118,22 @@ function uploadPack(read, objectSource, refSource, wantSink, options) {
           // If we have none, NAK.
           // TODO: implement multi_ack_detailed
           readHave(null, function next(end, have) {
-            ended = end
             if (end === true) {
-              // found no common object
-              acked = true
-              cb(null, 'NAK')
+              if (gotAnyHaves) {
+                // found no common object
+                acked = true
+                cb(null, 'NAK')
+              } else {
+                earlyDisconnect = true
+                // client disconnected before sending haves.
+                cb(true)
+              }
             } else if (end)
               cb(end)
             else if (have.type != 'have')
               cb(new Error('Unknown have' + JSON.stringify(have)))
-            else
+            else {
+              gotAnyHaves = true
               haveObject(have.hash, function (haveIt) {
                 if (!haveIt)
                   return readHave(null, next)
@@ -131,6 +141,7 @@ function uploadPack(read, objectSource, refSource, wantSink, options) {
                 acked = true
                 cb(null, 'ACK ' + have.hash)
               })
+            }
           })
         }
         /*
@@ -147,13 +158,14 @@ function uploadPack(read, objectSource, refSource, wantSink, options) {
         }
         */
       },
-      function next(abort, cb) {
-        if (abort) return cb(abort)
+      function havesDone(abort, cb) {
+        console.error("haves done", abort && typeof abort, sendPack && typeof sendPack)
+        if (abort || earlyDisconnect) return cb(abort || true)
         // send pack file to client
         if (!sendPack)
           getObjects(commonHash, function (err, numObjects, readObject) {
             sendPack = pack.encode(numObjects, readObject)
-            next(abort, cb)
+            havesDone(abort, cb)
           })
         else
           sendPack(abort, cb)
@@ -334,9 +346,12 @@ function receivePackHeader(capabilities, refSource, usePlaceholder) {
   }
 }
 
+// receive-pack: push from client
 function receivePack(read, objectSink, refSource, refSink, options) {
   var ended
-  var sendRefs = receivePackHeader([], refSource, true)
+  var sendRefs = receivePackHeader([
+    'delete-refs',
+  ], refSource, true)
 
   return packLineEncode(
     cat([

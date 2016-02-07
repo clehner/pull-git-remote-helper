@@ -154,7 +154,6 @@ tape('make a commit and push', function (t) {
   })
 })
 
-0 &&
 tape('fetch when already up-to-date', function (t) {
   t.git('fetch', '-vv', remote.full, function (msg) {
     t.notOk(msg, 'should not get a message here')
