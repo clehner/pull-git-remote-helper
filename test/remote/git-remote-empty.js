@@ -24,7 +24,7 @@ pull(
           hasher,
           pull.collect(function (err, bufs) {
             if (err) throw err
-            var buf = Buffer.concat(bufs)
+            var buf = Buffer.concat(bufs, length)
             console.error('obj', type, length, JSON.stringify(buf.toString('ascii')))
             process.send({object: {
               type: type,

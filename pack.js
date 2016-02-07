@@ -261,6 +261,9 @@ function flow(read) {
 */
 
 function encodePack(numObjects, readObject) {
+  if (readObject === undefined)
+    return encodePack.bind(this, numObjects)
+
   // var ended
   var header = new Buffer(12)
   header.write('PACK')

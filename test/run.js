@@ -18,6 +18,7 @@ var remote = {
 var tmpDir = mktemp.createDirSync(path.join(require('os').tmpdir(), 'XXXXXXX'))
 tape.onFinish(function () {
   if (tmpDir)
+    // console.error(tmpDir)
     rimraf.sync(tmpDir)
 })
 
@@ -85,7 +86,7 @@ tape('make a commit and push', function (t) {
   function obj(type, o) {
     return {
       type: type,
-      data: o.data,
+      data: o.data.toString('ascii'),
       length: o.data.length,
       hash: o.hash
     }
@@ -105,7 +106,7 @@ tape('make a commit and push', function (t) {
     }, 'got the ref']
   ])
 
-  var filePath = path.join(tmpDir, file.name)
+  var filePath = path.join(tmpDir, repo.fileName)
   fs.writeFile(filePath, file.data, function (err) {
     t.error(err, 'wrote a file')
     t.git('add', filePath, function (code) {
