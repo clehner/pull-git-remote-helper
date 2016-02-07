@@ -3,6 +3,8 @@ var pull = require('pull-stream')
 var cat = require('pull-cat')
 var buffered = require('pull-buffered')
 var pack = require('./lib/pack')
+var pktLine = require('./lib/pkt-line')
+var util = require('./lib/util')
 
 function handleOption(options, name, value) {
   switch (name) {
@@ -25,21 +27,8 @@ function capabilitiesSource() {
   ].join('\n') + '\n\n')
 }
 
-function split2(str, delim) {
-  var i = str.indexOf(delim || ' ')
-  return (i === -1) ? [str, ''] : [
-    str.substr(0, i),
-    str.substr(i + 1)
-  ]
-}
-
-function split3(str) {
-  var args = split2(str)
-  return [args[0]].concat(split2(args[1]))
-}
-
 function optionSource(cmd, options) {
-  var args = split2(cmd)
+  var args = util.split2(cmd)
   var msg = handleOption(options, args[0], args[1])
   msg = (msg === true) ? 'ok'
       : (msg === false) ? 'unsupported'
@@ -70,7 +59,7 @@ function uploadPack(read, haveObject, getObjects, refSource, wantSink, options) 
   var sendRefs = receivePackHeader([
   ], refSource, false)
 
-  var lines = packLineDecode(read, options)
+  var lines = pktLine.decode(read, options)
   var readHave = lines.haves()
   var acked
   var commonHash
@@ -79,7 +68,7 @@ function uploadPack(read, haveObject, getObjects, refSource, wantSink, options) 
 
   // Packfile negotiation
   return cat([
-    packLineEncode(cat([
+    pktLine.encode(cat([
       sendRefs,
       pull.once(''),
       function (abort, cb) {
@@ -143,119 +132,6 @@ function uploadPack(read, haveObject, getObjects, refSource, wantSink, options) 
   ])
 }
 
-function packLineEncode(read) {
-  var ended
-  return function (end, cb) {
-    if (ended) return cb(ended)
-    read(end, function (end, data) {
-      if (ended = end) {
-        cb(end)
-      } else {
-        if (data)
-          data += '\n'
-        else
-          data = ''
-        var len = data ? data.length + 4 : 0
-        var hexLen = ('000' + len.toString(16)).substr(-4)
-        var pkt = hexLen + data
-        // console.error('>', JSON.stringify(pkt))
-        cb(end, pkt)
-      }
-    })
-  }
-}
-
-function rev(str) {
-  return str === '0000000000000000000000000000000000000000' ? null : str
-}
-
-/* pull-stream/source.js */
-function abortCb(cb, abort, onAbort) {
-  cb(abort)
-  onAbort && onAbort(abort === true ? null: abort)
-  return
-}
-
-function packLineDecode(read, options) {
-  var b = buffered(read)
-  var readPrefix = b.chunks(4)
-  var ended
-
-  function readPackLine(abort, cb) {
-    if (ended) return cb(ended)
-    readPrefix(abort, function (end, buf) {
-      if (ended = end) return cb(end)
-      var len = parseInt(buf, 16)
-      if (!len)
-        return cb(null, new Buffer(''))
-      // TODO: figure out this -4 thing
-      b.chunks(len - 4)(null, function (end, buf) {
-        if (ended = end) return cb(end)
-        cb(end, buf)
-      })
-    })
-  }
-
-  function readPackLineStr(abort, cb) {
-    if (ended) return cb(ended)
-    readPackLine(abort, function (end, buf) {
-      if (ended = end) return cb(end)
-      // trim newline
-      var len = buf.length
-      if (buf[len - 1] == 0xa)
-        len--
-      var line = buf.toString('ascii', 0, len)
-      cb(null, line)
-    })
-  }
-
-  function readUpdate(abort, cb) {
-    readPackLine(abort, function (end, line) {
-      if (end) return cb(end)
-      if (options.verbosity >= 2)
-        console.error('line', line.toString('ascii'))
-      if (!line.length) return cb(true)
-      var args = split3(line.toString('ascii'))
-      var args2 = split2(args[2], '\0')
-      var caps = args2[1]
-      if (caps && options.verbosity >= 2)
-        console.error('update capabilities:', caps)
-      cb(null, {
-        old: rev(args[0]),
-        new: rev(args[1]),
-        name: args2[0]
-      })
-    })
-  }
-
-  function havesWants(onEnd) {
-    return function readWant(abort, cb) {
-      readPackLineStr(abort, function (end, line) {
-        if (end) return abortCb(cb, end, onEnd)
-        if (options.verbosity >= 2)
-          console.error('line', line)
-        // if (!line.length) return cb(true)
-        if (!line.length || line == 'done')
-          return abortCb(cb, true, onEnd)
-        var args = split3(line)
-        var caps = args[2]
-        if (caps && options.verbosity >= 2)
-          console.error('want capabilities:', caps)
-        cb(null, {
-          type: args[0],
-          hash: args[1],
-        })
-      })
-    }
-  }
-
-  b.packLines = readPackLine
-  b.updates = readUpdate
-  b.wants = b.haves = havesWants
-
-  return b
-}
-
 // run a callback when a pipeline ends
 // TODO: find a better way to do this
 function onThroughEnd(onEnd) {
@@ -276,7 +152,7 @@ report-status delete-refs side-band-64k quiet atomic ofs-delta
 */
 
 // Get a line for each ref that we have. The first line also has capabilities.
-// Wrap with packLineEncode.
+// Wrap with pktLine.encode.
 function receivePackHeader(capabilities, refSource, usePlaceholder) {
   var first = true
   var ended
@@ -309,7 +185,7 @@ function receivePack(read, objectSink, refSource, refSink, options) {
     'delete-refs',
   ], refSource, true)
 
-  return packLineEncode(
+  return pktLine.encode(
     cat([
       // send our refs
       sendRefs,
@@ -317,7 +193,7 @@ function receivePack(read, objectSink, refSource, refSink, options) {
       function (abort, cb) {
         if (abort) return
         // receive their refs
-        var lines = packLineDecode(read, options)
+        var lines = pktLine.decode(read, options)
         pull(
           lines.updates,
           onThroughEnd(refsDone),
@@ -366,7 +242,7 @@ module.exports = function (opts) {
   }
 
   function handleConnect(cmd, read) {
-    var args = split2(cmd)
+    var args = util.split2(cmd)
     switch (args[0]) {
       case 'git-upload-pack':
         return prepend('\n', uploadPack(read, haveObject, getObjects, refSource,
@@ -380,7 +256,7 @@ module.exports = function (opts) {
   }
 
   function handleCommand(line, read) {
-    var args = split2(line)
+    var args = util.split2(line)
     switch (args[0]) {
       case 'capabilities':
         return capabilitiesSource()
