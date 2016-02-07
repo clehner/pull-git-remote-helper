@@ -1,8 +1,8 @@
 var tape = require('tape')
-var pack = require('../pack')
+var pack = require('../lib/pack')
 var pull = require('pull-stream')
 var repo = require('./repo')
-var util = require('../util')
+var util = require('../lib/util')
 
 var objects = [
   {type: 'commit', object: repo.commit},

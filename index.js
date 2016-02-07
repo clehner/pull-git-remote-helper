@@ -2,7 +2,7 @@ var packCodec = require('js-git/lib/pack-codec')
 var pull = require('pull-stream')
 var cat = require('pull-cat')
 var buffered = require('pull-buffered')
-var pack = require('./pack')
+var pack = require('./lib/pack')
 
 function handleOption(options, name, value) {
   switch (name) {

@@ -2,7 +2,7 @@
 
 var toPull = require('stream-to-pull-stream')
 var pull = require('pull-stream')
-var util = require('../../util')
+var util = require('../../lib/util')
 
 process.on('uncaughtException', function (err) {
   if (err.stack)
