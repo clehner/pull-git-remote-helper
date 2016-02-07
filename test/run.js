@@ -76,17 +76,20 @@ tape('make a commit and push', function (t) {
   var commitMessage = 'Initial commit'
   var fileName = 'blah.txt'
   var fileContents = 'i am a file'
-  var fileHash = new Buffer(20)
-  fileHash.hexWrite('68bd10497ea68e91fa85024d0a0b2fe54e212914')
+  var fileHash = '68bd10497ea68e91fa85024d0a0b2fe54e212914'
+  var treeHash = '75c54aa020772a916853987a03bff7079463a861'
+  var commitHash = 'edb5b50e8019797925820007d318870f8c346726'
+  var fileHashBuf = new Buffer(20)
+  fileHashBuf.hexWrite(fileHash)
 
   var objects = t.items(t.deepEquals, [
     [{
       type: 'commit',
-      data: 'tree 75c54aa020772a916853987a03bff7079463a861\nauthor ' + userStr + ' 1000000000 -0500\ncommitter ' + userStr + ' 1000000000 -0500\n\n' + commitMessage + '\n'
+      data: 'tree ' + treeHash + '\nauthor ' + userStr + ' 1000000000 -0500\ncommitter ' + userStr + ' 1000000000 -0500\n\n' + commitMessage + '\n'
     }, 'got the commit'],
     [{
       type: 'tree',
-      data: '100644 ' + fileName + '\0' + fileHash.toString('ascii')
+      data: '100644 ' + fileName + '\0' + fileHashBuf.toString('ascii')
     }, 'got the tree'],
     [{
       type: 'blob', data: fileContents
@@ -96,7 +99,7 @@ tape('make a commit and push', function (t) {
   var refs = t.items(t.deepEquals, [
     [{
       name: 'refs/heads/master',
-      new: 'edb5b50e8019797925820007d318870f8c346726',
+      new: commitHash,
       old: null
     }, 'got the ref']
   ])
