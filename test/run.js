@@ -97,7 +97,7 @@ tape('make a commit and push', function (t) {
     [obj('blob', file), 'got the blob']
   ])
 
-  var refs = t.items(t.deepEquals, [
+  var updates = t.items(t.deepEquals, [
     [{
       name: 'refs/heads/master',
       new: commit.hash,
@@ -115,8 +115,8 @@ tape('make a commit and push', function (t) {
         t.git('push', remote.empty, 'master', function (msg) {
           if (msg.object)
             objects(msg.object)
-          else if (msg.ref)
-            refs(msg.ref)
+          else if (msg.update)
+            updates(msg.update)
           else
             t.notOk(msg, 'unexpected message')
         }, function (code) {

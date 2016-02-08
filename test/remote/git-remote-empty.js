@@ -36,8 +36,8 @@ pull(
         )
       })
     },
-    refSink: pull.drain(function (ref) {
-      process.send({ref: ref})
+    updateSink: pull.drain(function (update) {
+      process.send({update: update})
     })
   }),
   toPull(process.stdout, function (err) {

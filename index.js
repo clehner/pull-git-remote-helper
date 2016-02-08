@@ -179,7 +179,7 @@ function receivePackHeader(capabilities, refSource, usePlaceholder) {
 }
 
 // receive-pack: push from client
-function receivePack(read, objectSink, refSource, refSink, options) {
+function receivePack(read, objectSink, refSource, updateSink, options) {
   var ended
   var sendRefs = receivePackHeader([
     'delete-refs',
@@ -196,10 +196,10 @@ function receivePack(read, objectSink, refSource, refSink, options) {
         var lines = pktLine.decode(read, options)
         pull(
           lines.updates,
-          onThroughEnd(refsDone),
-          refSink
+          onThroughEnd(updatesDone),
+          updateSink
         )
-        function refsDone(err) {
+        function updatesDone(err) {
           if (err) return cb(err)
           pull(
             lines.passthrough,
@@ -233,7 +233,7 @@ module.exports = function (opts) {
     cb(null, 0, pull.empty())
   }
   var refSource = opts.refSource || pull.empty()
-  var refSink = opts.refSink || pull.drain()
+  var updateSink = opts.updateSink || pull.drain()
   var wantSink = opts.wantSink || pull.drain()
 
   var options = {
@@ -249,7 +249,7 @@ module.exports = function (opts) {
           wantSink, options))
       case 'git-receive-pack':
         return prepend('\n', receivePack(read, objectSink, refSource,
-          refSink, options))
+          updateSink, options))
       default:
         return pull.error(new Error('Unknown service ' + args[0]))
     }
