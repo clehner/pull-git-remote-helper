@@ -16,7 +16,11 @@ function streamObject(read) {
     read(abort, function (end, item) {
       if (ended = end) return cb(end)
       var data = item.object.data
-      cb(null, item.type, data.length, pull.once(data))
+      cb(null, {
+        type: item.type,
+        length: data.length,
+        read: pull.once(data)
+      })
     })
   }
 }
@@ -24,17 +28,17 @@ function streamObject(read) {
 function bufferObject(readObject) {
   var ended
   return function (abort, cb) {
-    readObject(abort, function next(end, type, length, read) {
+    readObject(abort, function next(end, object) {
       if (ended = end) return cb(end)
-      var hasher = util.createGitObjectHash(type, length)
+      var hasher = util.createGitObjectHash(object.type, object.length)
       pull(
-        read,
+        object.read,
         hasher,
         pull.collect(function (err, bufs) {
           if (err) console.error(err)
           // console.error('obj', type, length, JSON.stringify(buf.toString('ascii')))
           cb(err, {
-            type: type,
+            type: object.type,
             object: {
               hash: hasher.digest('hex'),
               data: Buffer.concat(bufs)

@@ -227,7 +227,7 @@ function prepend(data, read) {
 
 module.exports = function (opts) {
   var ended
-  var objectSink = opts.objectSink
+  var objectSink = opts.objectSink || pull.error('Missing object sink')
   var haveObject = opts.haveObject || function (hash, cb) { cb(false) }
   var getObjects = opts.getObjects || function (id, cb) {
     cb(null, 0, pull.empty())

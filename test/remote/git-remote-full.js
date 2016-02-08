@@ -34,7 +34,11 @@ function streamObject(read) {
     read(abort, function (end, item) {
       if (ended = end) return cb(end)
       var data = item.object.data
-      cb(null, item.type, data.length, pull.once(data))
+      cb(null, {
+        type: item.type,
+        length: data.length,
+        read: pull.once(data)
+      })
     })
   }
 }
