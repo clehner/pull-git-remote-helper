@@ -50,7 +50,7 @@ pull(
     wantSink: pull.drain(function (want) {
       process.send({want: want})
     }),
-    haveObject: function (hash, cb) {
+    hasObject: function (hash, cb) {
       cb(hash in hashes)
     },
     getObjects: function (ancestorHash, cb) {

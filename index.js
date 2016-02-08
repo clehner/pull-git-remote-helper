@@ -52,7 +52,7 @@ function listRefs(read) {
 }
 
 // upload-pack: fetch to client
-function uploadPack(read, haveObject, getObjects, refSource, wantSink, options) {
+function uploadPack(read, hasObject, getObjects, refSource, wantSink, options) {
   /* multi_ack thin-pack side-band side-band-64k ofs-delta shallow no-progress
    * include-tag multi_ack_detailed symref=HEAD:refs/heads/master
    * agent=git/2.7.0 */
@@ -106,7 +106,7 @@ function uploadPack(read, haveObject, getObjects, refSource, wantSink, options) 
             else if (have.type != 'have')
               cb(new Error('Unknown have' + JSON.stringify(have)))
             else
-              haveObject(have.hash, function (haveIt) {
+              hasObject(have.hash, function (haveIt) {
                 if (!haveIt)
                   return readHave(null, next)
                 commonHash = haveIt
@@ -228,7 +228,7 @@ function prepend(data, read) {
 module.exports = function (opts) {
   var ended
   var objectSink = opts.objectSink || pull.error('Missing object sink')
-  var haveObject = opts.haveObject || function (hash, cb) { cb(false) }
+  var hasObject = opts.hasObject || function (hash, cb) { cb(false) }
   var getObjects = opts.getObjects || function (id, cb) {
     cb(null, 0, pull.empty())
   }
@@ -245,7 +245,7 @@ module.exports = function (opts) {
     var args = util.split2(cmd)
     switch (args[0]) {
       case 'git-upload-pack':
-        return prepend('\n', uploadPack(read, haveObject, getObjects, refSource,
+        return prepend('\n', uploadPack(read, hasObject, getObjects, refSource,
           wantSink, options))
       case 'git-receive-pack':
         return prepend('\n', receivePack(read, objectSink, refSource,
