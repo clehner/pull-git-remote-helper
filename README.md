@@ -6,17 +6,31 @@ integrates with git's internal objects.
 ## Example
 
 ```js
+#!/usr/bin/env node
+
 var toPull = require('stream-to-pull-stream')
 var pull = require('pull-stream')
-var gitRemoteHelper = require('pull-git-remote-helper')
+var gitRemoteHelper = require('.')
 
 var options = {
-  refSource: pull.values([]),
-  updateSink: pull.drain(console.error),
-  wantSink: pull.drain(console.error),
-  hasObject: function (hash, cb) { cb(false) },
-  getObjects: /* ... /,
-  objectSink: /* ... */
+  updateSink: pull.drain(function (update) {
+    console.error('Updating ' + update.name + ' to ' + update.new)
+  }),
+  objectSink: function (read) {
+    read(null, function next(end, object) {
+      if (end === true) return
+      if (end) throw end
+      pull(
+        object.read,
+        pull.collect(function (err, bufs) {
+          if (err) throw err
+          var buf = Buffer.concat(bufs, object.length)
+          console.error('Got object', object, buf)
+          read(null, next)
+        })
+      )
+    })
+  }
 }
 
 pull(
