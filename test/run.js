@@ -40,7 +40,7 @@ tape.Test.prototype.git = function () {
   return spawn('git', args, {
     env: env,
     cwd: tmpDir,
-		stdio: ['ignore', 'inherit', 'inherit', 'ipc']
+    stdio: ['ignore', 'inherit', 'inherit', 'ipc']
   })
   .on('close', doneCb)
   .on('message', handleIpcMessage(this, msgCb))
@@ -142,8 +142,8 @@ tape('clone into new dir', function (t) {
   t.git('clone', remote.full, dir, function (msg) {
     if (msg.want)
       t.deepEquals(msg.want, {
-	type: 'want',
-	hash: 'edb5b50e8019797925820007d318870f8c346726'
+        type: 'want',
+        hash: 'edb5b50e8019797925820007d318870f8c346726'
       }, 'got want')
     else
       t.notOk(msg, 'unexpected message')
