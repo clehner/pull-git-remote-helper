@@ -132,20 +132,6 @@ function uploadPack(read, hasObject, getObjects, refSource, wantSink, options) {
   ])
 }
 
-// run a callback when a pipeline ends
-// TODO: find a better way to do this
-function onThroughEnd(onEnd) {
-  return function (read) {
-    return function (end, cb) {
-      read(end, function (end, data) {
-        cb(end, data)
-        if (end)
-          onEnd(end === true ? null : end)
-      })
-    }
-  }
-}
-
 /*
 TODO: investigate capabilities
 report-status delete-refs side-band-64k quiet atomic ofs-delta
@@ -196,7 +182,7 @@ function receivePack(read, objectSink, refSource, updateSink, options) {
         var lines = pktLine.decode(read, options)
         pull(
           lines.updates,
-          onThroughEnd(updatesDone),
+          pull.through(null, updatesDone),
           updateSink
         )
         function updatesDone(err) {
