@@ -136,6 +136,7 @@ tape('fetch when already up-to-date', function (t) {
   })
 })
 
+0 &&
 tape('clone into new dir', function (t) {
   var dir = path.join(tmpDir, 'clonedir')
   t.plan(2)

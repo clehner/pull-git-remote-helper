@@ -14,8 +14,19 @@ process.on('uncaughtException', function (err) {
 pull(
   toPull(process.stdin),
   require('../../')({
-    objectSink: function (read) {
-      read(null, function next(end, object) {
+    refs: pull.empty(),
+    hasObject: function (hash, cb) { cb(null, false) },
+    getObject: function (hash, cb) { cb(null, null) },
+    update: function (readRefs, readObjects) {
+      pull(
+        readRefs,
+        pull.drain(function (update) {
+          process.send({update: update})
+        }, function (err) {
+          if (err) throw err
+        })
+      )
+      readObjects(null, function next(end, object) {
         if (end === true) return
         if (end) throw end
         var hasher = util.createGitObjectHash(object.type, object.length)
@@ -31,14 +42,11 @@ pull(
               length: object.length,
               hash: hasher.digest('hex')
             }})
-            read(null, next)
+            readObjects(null, next)
           })
         )
       })
-    },
-    updateSink: pull.drain(function (update) {
-      process.send({update: update})
-    })
+    }
   }),
   toPull(process.stdout, function (err) {
     if (err)

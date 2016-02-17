@@ -24,40 +24,28 @@ var objects = [
 ]
 
 var hashes = {}
-hashes[repo.commit.hash] = 1
-hashes[repo.tree.hash] = 1
-hashes[repo.file.hash] = 1
-
-function streamObject(read) {
-  var ended
-  return function readObject(abort, cb) {
-    read(abort, function (end, item) {
-      if (ended = end) return cb(end)
-      var data = item.object.data
-      cb(null, {
-        type: item.type,
-        length: data.length,
-        read: pull.once(data)
-      })
-    })
-  }
-}
+hashes[repo.commit.hash] = objects[0]
+hashes[repo.tree.hash] = objects[1]
+hashes[repo.file.hash] = objects[2]
 
 pull(
   toPull(process.stdin),
   require('../../')({
-    refSource: pull.values(refs),
+    refs: pull.values(refs),
     wantSink: pull.drain(function (want) {
       process.send({want: want})
     }),
     hasObject: function (hash, cb) {
-      cb(hash in hashes)
+      cb(null, hash in hashes)
     },
-    getObjects: function (ancestorHash, cb) {
-      cb(null, objects.length, pull(
-        pull.values(objects),
-        streamObject
-      ))
+    getObject: function (hash, cb) {
+      var item = hashes[hash]
+      if (!item) return cb(null, null)
+      cb(null, {
+        type: item.type,
+        length: item.object.data.length,
+        read: pull.once(item.object.data)
+      })
     }
   }),
   toPull(process.stdout, function (err) {

@@ -52,10 +52,12 @@ function listRefs(read) {
 }
 
 // upload-pack: fetch to client
-function uploadPack(read, hasObject, getObjects, refSource, wantSink, options) {
+function uploadPack(read, repo, options) {
+  // getObjects, wantSink
   /* multi_ack thin-pack side-band side-band-64k ofs-delta shallow no-progress
    * include-tag multi_ack_detailed symref=HEAD:refs/heads/master
    * agent=git/2.7.0 */
+  var refSource = repo.refs.bind(repo)
   var sendRefs = receivePackHeader([
   ], refSource, false)
 
@@ -106,7 +108,8 @@ function uploadPack(read, hasObject, getObjects, refSource, wantSink, options) {
             else if (have.type != 'have')
               cb(new Error('Unknown have' + JSON.stringify(have)))
             else
-              hasObject(have.hash, function (haveIt) {
+              repo.hasObject(have.hash, function (err, haveIt) {
+                if (err) return cb(err)
                 if (!haveIt)
                   return readHave(null, next)
                 commonHash = haveIt
@@ -165,8 +168,9 @@ function receivePackHeader(capabilities, refSource, usePlaceholder) {
 }
 
 // receive-pack: push from client
-function receivePack(read, objectSink, refSource, updateSink, options) {
+function receivePack(read, repo, options) {
   var ended
+  var refSource = repo.refs.bind(repo)
   var sendRefs = receivePackHeader([
     'delete-refs',
   ], refSource, true)
@@ -182,16 +186,17 @@ function receivePack(read, objectSink, refSource, updateSink, options) {
         var lines = pktLine.decode(read, options)
         pull(
           lines.updates,
-          pull.through(null, updatesDone),
-          updateSink
+          pull.collect(function (err, updates) {
+            if (err) return cb(err)
+            repo.update(pull.values(updates), pull(
+              lines.passthrough,
+              pack.decode(onEnd)
+            ), onEnd)
+          })
         )
-        function updatesDone(err) {
-          if (err) return cb(err)
-          pull(
-            lines.passthrough,
-            pack.decode(cb),
-            objectSink
-          )
+        function onEnd(err) {
+          if (!ended)
+            cb(ended = err)
         }
       },
       pull.once('unpack ok')
@@ -211,17 +216,13 @@ function prepend(data, read) {
   }
 }
 
-module.exports = function (opts) {
+module.exports = function (repo) {
   var ended
-  var objectSink = opts.objectSink ||
-    function () { throw new Error('Missing object sink') }
-  var hasObject = opts.hasObject || function (hash, cb) { cb(false) }
+  /*
   var getObjects = opts.getObjects || function (id, cb) {
     cb(null, 0, pull.empty())
   }
-  var refSource = opts.refSource || pull.empty()
-  var updateSink = opts.updateSink || pull.drain()
-  var wantSink = opts.wantSink || pull.drain()
+  */
 
   var options = {
     verbosity: 1,
@@ -232,11 +233,9 @@ module.exports = function (opts) {
     var args = util.split2(cmd)
     switch (args[0]) {
       case 'git-upload-pack':
-        return prepend('\n', uploadPack(read, hasObject, getObjects, refSource,
-          wantSink, options))
+        return prepend('\n', uploadPack(read, repo, options))
       case 'git-receive-pack':
-        return prepend('\n', receivePack(read, objectSink, refSource,
-          updateSink, options))
+        return prepend('\n', receivePack(read, repo, options))
       default:
         return pull.error(new Error('Unknown service ' + args[0]))
     }

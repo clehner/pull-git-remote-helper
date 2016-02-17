@@ -12,6 +12,7 @@
   },
   "keywords": [
     "pull-stream",
+    "pull-git-repo",
     "git",
     "git-remote-helper"
   ],
