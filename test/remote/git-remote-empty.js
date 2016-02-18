@@ -14,7 +14,7 @@ process.on('uncaughtException', function (err) {
 pull(
   toPull(process.stdin),
   require('../../')({
-    refs: pull.empty(),
+    refs: pull.empty,
     hasObject: function (hash, cb) { cb(null, false) },
     getObject: function (hash, cb) { cb(new Error('No objects here')) },
     update: function (readRefs, readObjects) {

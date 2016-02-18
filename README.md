@@ -13,7 +13,7 @@ var pull = require('pull-stream')
 var gitRemoteHelper = require('.')
 
 var repo = {
-  refs: pull.empty(),
+  refs: pull.empty,
   hasObject: function (hash, cb) { cb(null, false) },
   getObject: function (hash, cb) { cb(null, null) },
   update: function (readUpdates, readObjects) {

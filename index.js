@@ -57,9 +57,8 @@ function uploadPack(read, repo, options) {
   /* multi_ack thin-pack side-band side-band-64k ofs-delta shallow no-progress
    * include-tag multi_ack_detailed symref=HEAD:refs/heads/master
    * agent=git/2.7.0 */
-  var refSource = repo.refs.bind(repo)
   var sendRefs = receivePackHeader([
-  ], refSource, false)
+  ], repo.refs(), false)
 
   var lines = pktLine.decode(read, options)
   var readHave = lines.haves()
@@ -279,10 +278,9 @@ function receivePackHeader(capabilities, refSource, usePlaceholder) {
 // receive-pack: push from client
 function receivePack(read, repo, options) {
   var ended
-  var refSource = repo.refs.bind(repo)
   var sendRefs = receivePackHeader([
     'delete-refs',
-  ], refSource, true)
+  ], repo.refs(), true)
 
   return pktLine.encode(
     cat([

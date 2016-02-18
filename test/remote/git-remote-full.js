@@ -31,7 +31,7 @@ hashes[repo.file.hash] = objects[2]
 pull(
   toPull(process.stdin),
   require('../../')({
-    refs: pull.values(refs),
+    refs: function () { return pull.values(refs) },
     wantSink: pull.drain(function (want) {
       process.send({want: want})
     }),
