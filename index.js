@@ -399,7 +399,14 @@ module.exports = function (repo) {
           else
             next(abort, cb)
         } else {
-          cb(null, data)
+          // HACK: silence error when writing to closed stream
+          try {
+            cb(null, data)
+          } catch(e) {
+            if (e.message == 'process.stdout cannot be closed.')
+              process.exit(1)
+            else throw e
+          }
         }
       })
     }
