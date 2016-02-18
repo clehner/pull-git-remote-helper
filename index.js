@@ -5,6 +5,7 @@ var buffered = require('pull-buffered')
 var pack = require('./lib/pack')
 var pktLine = require('./lib/pkt-line')
 var util = require('./lib/util')
+var multicb = require('multicb')
 
 function handleOption(options, name, value) {
   switch (name) {
@@ -53,7 +54,6 @@ function listRefs(read) {
 
 // upload-pack: fetch to client
 function uploadPack(read, repo, options) {
-  // getObjects, wantSink
   /* multi_ack thin-pack side-band side-band-64k ofs-delta shallow no-progress
    * include-tag multi_ack_detailed symref=HEAD:refs/heads/master
    * agent=git/2.7.0 */
@@ -66,7 +66,8 @@ function uploadPack(read, repo, options) {
   var acked
   var commonHash
   var sendPack
-  var earlyDisconnect
+  var wants = {}
+  var shallows = {}
 
   // Packfile negotiation
   return cat([
@@ -76,24 +77,31 @@ function uploadPack(read, repo, options) {
       function (abort, cb) {
         if (abort) return
         if (acked) return cb(true)
+
         // read upload request (wants list) from client
-        var readWant = lines.wants(wantsDone)
+        var readWant = lines.wants()
         readWant(null, function (end, want) {
-          if (end === true) {
-            // client disconnected before sending wants
-            earlyDisconnect = true
-            cb(true)
-          } else if (end) {
-            cb(end)
-          } else {
-            wantSink(readWant)
-          }
+          // client may disconnect before sending wants
+          if (end === true) cb(true)
+          else if (end) cb(end)
+          else readWant(null, nextWant)
         })
+        function nextWant(end, want) {
+          if (end) return wantsDone(end === true ? null : end)
+          if (want.type == 'want') {
+            wants[want.hash] = true
+          } else if (want.type == 'shallow') {
+            shallows[want.hash] = true
+          } else {
+            var err = new Error("Unknown thing", want.type, want.hash)
+            return readWant(err, function (e) { cb(e || err) })
+          }
+          readWant(null, nextWant)
+        }
 
         function wantsDone(err) {
-          // console.error('wants done', err, earlyDisconnect)
+          console.error('wants done', err)
           if (err) return cb(err)
-          if (earlyDisconnect) return cb(true)
           // Read upload haves (haves list).
           // On first obj-id that we have, ACK
           // If we have none, NAK.
@@ -120,19 +128,122 @@ function uploadPack(read, repo, options) {
         }
       },
     ])),
+
     function havesDone(abort, cb) {
-      // console.error("haves done", abort && typeof abort, sendPack && typeof sendPack, abort, earlyDisconnect)
-      if (abort || earlyDisconnect) return cb(abort || true)
+      if (abort) return cb(abort)
       // send pack file to client
       if (!sendPack)
-        getObjects(commonHash, function (err, numObjects, readObject) {
-          sendPack = pack.encode(numObjects, readObject)
-          havesDone(abort, cb)
-        })
+        getObjects(repo, commonHash, wants, shallows,
+          function (err, numObjects, readObjects) {
+            if (err) return cb(err)
+            sendPack = pack.encode(numObjects, readObjects)
+            havesDone(abort, cb)
+          }
+        )
       else
         sendPack(abort, cb)
     }
   ])
+}
+
+function getObjects(repo, commonHash, heads, shallows, cb) {
+  // get objects from commonHash to each head, inclusive.
+  // if commonHash is falsy, use root
+  var objects = []
+  var objectsAdded = {}
+  var done = multicb({pluck: 1})
+  var ended
+
+  // walk back from heads until get to commonHash
+  for (var hash in heads)
+    addObject(hash, done())
+
+  // TODO: only add new objects
+
+  function addObject(hash, cb) {
+    if (ended) return cb(ended)
+    if (hash in objectsAdded || hash == commonHash) return cb()
+    objectsAdded[hash] = true
+    repo.getObject(hash, function (err, object) {
+      if (err) return cb(err)
+      if (object.type == 'blob') {
+        objects.push(object)
+        cb()
+      } else {
+        // object must be read twice, so buffer it
+        bufferObject(object, function (err, object) {
+          if (err) return cb(err)
+          objects.push(object)
+          var hashes = getObjectLinks(object)
+          for (var sha1 in hashes)
+            addObject(sha1, done())
+          cb()
+        })
+      }
+    })
+  }
+
+  done(function (err) {
+    if (err) return cb(err)
+    cb(null, objects.length, pull.values(objects))
+  })
+}
+
+function bufferObject(object, cb) {
+  pull(
+    object.read,
+    pull.collect(function (err, bufs) {
+      if (err) return cb(err)
+      var buf = Buffer.concat(bufs, object.length)
+      cb(null, {
+        type: object.type,
+        length: object.length,
+        data: buf,
+        read: pull.once(buf)
+      })
+    })
+  )
+}
+
+// get hashes of git objects linked to from other git objects
+function getObjectLinks(object, cb) {
+  switch (object.type) {
+    case 'blob':
+      return {}
+    case 'tree':
+      return getTreeLinks(object.data)
+    case 'tag':
+    case 'commit':
+      return getCommitOrTagLinks(object.data)
+  }
+}
+
+function getTreeLinks(buf) {
+  var links = {}
+  for (var i = 0, j; j = buf.indexOf(0, i, 'ascii') + 1; i = j + 20) {
+    var hash = buf.slice(j, j + 20).toString('hex')
+    if (!(hash in links))
+      links[hash] = true
+  }
+  return links
+}
+
+function getCommitOrTagLinks(buf) {
+  var lines = buf.toString('utf8').split('\n')
+  var links = {}
+  // iterate until reach blank line (indicating start of commit/tag body)
+  for (var i = 0; lines[i]; i++) {
+    var args = lines[i].split(' ')
+    switch (args[0]) {
+      case 'tree':
+      case 'parent':
+      case 'object':
+        var hash = args[1]
+        if (!(hash in links))
+          links[hash] = true
+    }
+  }
+  return links
 }
 
 /*
@@ -218,12 +329,6 @@ function prepend(data, read) {
 
 module.exports = function (repo) {
   var ended
-  /*
-  var getObjects = opts.getObjects || function (id, cb) {
-    cb(null, 0, pull.empty())
-  }
-  */
-
   var options = {
     verbosity: 1,
     progress: false

@@ -127,6 +127,7 @@ tape('make a commit and push', function (t) {
   })
 })
 
+0 &&
 tape('fetch when already up-to-date', function (t) {
   t.git('fetch', remote.full, function (msg) {
     t.notOk(msg, 'should not get a message here')
@@ -136,19 +137,12 @@ tape('fetch when already up-to-date', function (t) {
   })
 })
 
-0 &&
 tape('clone into new dir', function (t) {
   var dir = path.join(tmpDir, 'clonedir')
-  t.plan(2)
   t.git('clone', remote.full, dir, function (msg) {
-    if (msg.want)
-      t.deepEquals(msg.want, {
-        type: 'want',
-        hash: 'edb5b50e8019797925820007d318870f8c346726'
-      }, 'got want')
-    else
-      t.notOk(msg, 'unexpected message')
+    t.notOk(msg, 'unexpected message')
   }, function (code) {
     t.equals(code, 0, 'cloned')
+    t.end()
   })
 })

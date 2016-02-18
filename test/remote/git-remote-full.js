@@ -40,7 +40,7 @@ pull(
     },
     getObject: function (hash, cb) {
       var item = hashes[hash]
-      if (!item) return cb(null, null)
+      if (!item) return cb(new Error('Object not present with hash ' + hash))
       cb(null, {
         type: item.type,
         length: item.object.data.length,

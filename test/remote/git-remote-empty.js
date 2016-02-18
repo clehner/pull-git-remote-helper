@@ -16,7 +16,7 @@ pull(
   require('../../')({
     refs: pull.empty(),
     hasObject: function (hash, cb) { cb(null, false) },
-    getObject: function (hash, cb) { cb(null, null) },
+    getObject: function (hash, cb) { cb(new Error('No objects here')) },
     update: function (readRefs, readObjects) {
       pull(
         readRefs,
