@@ -81,10 +81,9 @@ function uploadPack(read, repo, options) {
         // read upload request (wants list) from client
         var readWant = lines.wants()
         readWant(null, function (end, want) {
-          // client may disconnect before sending wants
-          if (end === true) cb(true)
+          if (end === true) return // early client disconnect
           else if (end) cb(end)
-          else readWant(null, nextWant)
+          else nextWant(null, want)
         })
         function nextWant(end, want) {
           if (end) return wantsDone(end === true ? null : end)
@@ -100,7 +99,6 @@ function uploadPack(read, repo, options) {
         }
 
         function wantsDone(err) {
-          console.error('wants done', err)
           if (err) return cb(err)
           // Read upload haves (haves list).
           // On first obj-id that we have, ACK
