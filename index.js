@@ -297,13 +297,14 @@ function receivePack(read, repo, options) {
             if (err) return cb(err)
             repo.update(pull.values(updates), pull(
               lines.passthrough,
-              pack.decode(onEnd)
+              pack.decode(repo, onEnd)
             ), onEnd)
           })
         )
         function onEnd(err) {
-          if (!ended)
-            cb(ended = err)
+          if (ended) return
+          ended = err || true
+          cb(err || true)
         }
       },
       pull.once('unpack ok')
