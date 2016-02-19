@@ -80,7 +80,7 @@ function uploadPack(read, repo, options) {
         // read upload request (wants list) from client
         var readWant = lines.wants()
         readWant(null, function (end, want) {
-          if (end === true) return // early client disconnect
+          if (end === true) return cb(true) // early client disconnect
           else if (end) cb(end)
           else nextWant(null, want)
         })
@@ -295,6 +295,7 @@ function receivePack(read, repo, options) {
           lines.updates,
           pull.collect(function (err, updates) {
             if (err) return cb(err)
+            if (updates.length === 0) return cb(true)
             repo.update(pull.values(updates), pull(
               lines.passthrough,
               pack.decode(options, repo, done())
@@ -402,9 +403,10 @@ module.exports = function (repo) {
           try {
             cb(null, data)
           } catch(e) {
-            if (e.message == 'process.stdout cannot be closed.')
+            if (e.message == 'process.stdout cannot be closed.'
+             || e.message == 'This socket is closed.')
               process.exit(1)
-            else throw e
+            throw e
           }
         }
       })
