@@ -59,9 +59,9 @@ pull(
 
 ## TODO
 
-- Implement tree-walking to simplify `wantSink` and `getObjects`
 - Handle shallow and unshallow fetch
-- Test with a more complete server/remote implementation
+- Show progress during operations
+- Handle verbosity option throughout operations
 
 ## License
 
