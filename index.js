@@ -133,7 +133,7 @@ function uploadPack(read, repo, options) {
         getObjects(repo, commonHash, wants, shallows,
           function (err, numObjects, readObjects) {
             if (err) return cb(err)
-            sendPack = pack.encode(numObjects, readObjects)
+            sendPack = pack.encode(options, numObjects, readObjects)
             havesDone(abort, cb)
           }
         )
@@ -297,7 +297,7 @@ function receivePack(read, repo, options) {
             if (err) return cb(err)
             repo.update(pull.values(updates), pull(
               lines.passthrough,
-              pack.decode(repo, done())
+              pack.decode(options, repo, done())
             ), done())
             done(function (err) {
               cb(err || true)

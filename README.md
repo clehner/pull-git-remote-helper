@@ -61,7 +61,6 @@ pull(
 
 - Handle shallow and unshallow fetch
 - Show progress during operations
-- Handle verbosity option throughout operations
 
 ## License
 
