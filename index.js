@@ -6,7 +6,7 @@ var pack = require('./lib/pack')
 var pktLine = require('./lib/pkt-line')
 var util = require('./lib/util')
 var multicb = require('multicb')
-var Gauge = require('gauge')
+var ProgressBar = require('progress')
 
 function handleOption(options, name, value) {
   switch (name) {
@@ -151,24 +151,24 @@ function progressObjects(options) {
   if (!options.progress) return function (readObject) { return readObject }
 
   var numObjects
-  var numObjectsCompleted = 0
-  var gauge = new Gauge()
+  var size = process.stderr.columns - 5
+  var bar = new ProgressBar(':percent :bar', { total: size })
 
   var progress = function (readObject) {
     return function (abort, cb) {
       readObject(abort, function next(end, object) {
         if (end === true) {
-          gauge.hide()
+          bar.terminate()
         } else {
-          numObjectsCompleted++
           var name = object.type + ' ' + object.length
-          gauge.show(name, numObjectsCompleted / numObjects)
+          bar.tick(size / numObjects)
         }
 
         cb(end, object)
       })
     }
   }
+  // TODO: put the num objects in the objects stream as a header object
   progress.setNumObjects = function (n) {
     numObjects = n
   }
