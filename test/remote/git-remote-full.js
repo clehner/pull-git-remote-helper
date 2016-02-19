@@ -13,8 +13,8 @@ process.on('uncaughtException', function (err) {
 
 var HEAD = 'edb5b50e8019797925820007d318870f8c346726'
 var refs = [
-  {name: 'refs/heads/master', value: HEAD},
-  {name: 'HEAD', value: HEAD}
+  {name: 'refs/heads/master', hash: HEAD},
+  {name: 'HEAD', hash: HEAD}
 ]
 
 var objects = [

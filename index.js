@@ -258,7 +258,7 @@ function receivePackHeader(capabilities, refSource, usePlaceholder) {
     refSource(abort, function (end, ref) {
       ended = end
       var name = ref && ref.name
-      var value = ref && ref.value
+      var value = ref && ref.hash
       if (first && usePlaceholder) {
         first = false
         if (end) {
