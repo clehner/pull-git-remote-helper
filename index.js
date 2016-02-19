@@ -148,7 +148,13 @@ function uploadPack(read, repo, options) {
 
 // through stream to show a progress bar for objects being read
 function progressObjects(options) {
-  if (!options.progress) return function (readObject) { return readObject }
+  // Only show progress bar if it is requested and if it won't interfere with
+  // the debug output
+  if (!options.progress || options.verbosity > 1) {
+    var dummyProgress = function (readObject) { return readObject }
+    dummyProgress.setNumObjects = function () {}
+    return dummyProgress
+  }
 
   var numObjects
   var size = process.stderr.columns - 5
