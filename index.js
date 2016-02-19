@@ -277,10 +277,10 @@ function receivePackHeader(capabilities, refSource, usePlaceholder) {
 
 // receive-pack: push from client
 function receivePack(read, repo, options) {
-  var ended
   var sendRefs = receivePackHeader([
     'delete-refs',
   ], repo.refs(), true)
+  var done = multicb({pluck: 1})
 
   return pktLine.encode(
     cat([
@@ -297,15 +297,13 @@ function receivePack(read, repo, options) {
             if (err) return cb(err)
             repo.update(pull.values(updates), pull(
               lines.passthrough,
-              pack.decode(repo, onEnd)
-            ), onEnd)
+              pack.decode(repo, done())
+            ), done())
+            done(function (err) {
+              cb(err || true)
+            })
           })
         )
-        function onEnd(err) {
-          if (ended) return
-          ended = err || true
-          cb(err || true)
-        }
       },
       pull.once('unpack ok')
     ])
