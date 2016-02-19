@@ -6,6 +6,7 @@ var pack = require('./lib/pack')
 var pktLine = require('./lib/pkt-line')
 var util = require('./lib/util')
 var multicb = require('multicb')
+var Gauge = require('gauge')
 
 function handleOption(options, name, value) {
   switch (name) {
@@ -129,18 +130,49 @@ function uploadPack(read, repo, options) {
     function havesDone(abort, cb) {
       if (abort) return cb(abort)
       // send pack file to client
-      if (!sendPack)
-        getObjects(repo, commonHash, wants, shallows,
-          function (err, numObjects, readObjects) {
-            if (err) return cb(err)
-            sendPack = pack.encode(options, numObjects, readObjects)
-            havesDone(abort, cb)
-          }
-        )
-      else
-        sendPack(abort, cb)
+      if (sendPack)
+        return sendPack(abort, cb)
+      getObjects(repo, commonHash, wants, shallows,
+        function (err, numObjects, readObjects) {
+          if (err) return cb(err)
+          var progress = progressObjects(options)
+          progress.setNumObjects(numObjects)
+          sendPack = pack.encode(options, numObjects,
+            progress(readObjects))
+          havesDone(abort, cb)
+        }
+      )
     }
   ])
+}
+
+// through stream to show a progress bar for objects being read
+function progressObjects(options) {
+  if (!options.progress) return function (readObject) { return readObject }
+
+  var numObjects
+  var numObjectsCompleted = 0
+  var gauge = new Gauge()
+
+  var progress = function (readObject) {
+    return function (abort, cb) {
+      readObject(abort, function next(end, object) {
+        if (end === true) {
+          gauge.hide()
+        } else {
+          numObjectsCompleted++
+          var name = object.type + ' ' + object.length
+          gauge.show(name, numObjectsCompleted / numObjects)
+        }
+
+        cb(end, object)
+      })
+    }
+  }
+  progress.setNumObjects = function (n) {
+    numObjects = n
+  }
+  return progress
 }
 
 function getObjects(repo, commonHash, heads, shallows, cb) {
@@ -296,9 +328,16 @@ function receivePack(read, repo, options) {
           pull.collect(function (err, updates) {
             if (err) return cb(err)
             if (updates.length === 0) return cb(true)
+            var progress = progressObjects(options)
             repo.update(pull.values(updates), pull(
               lines.passthrough,
-              pack.decode(options, repo, done())
+              pack.decode({
+                verbosity: options.verbosity,
+                onHeader: function (numObjects) {
+                  progress.setNumObjects(numObjects)
+                }
+              }, repo, done()),
+              progress
             ), done())
             done(function (err) {
               cb(err || true)

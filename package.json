@@ -22,6 +22,7 @@
     "url": "https://github.com/clehner/pull-git-remote-helper/issues"
   },
   "dependencies": {
+    "gauge": "^1.2.7",
     "multicb": "^1.2.1",
     "pako": "^0.2.8",
     "pull-buffered": "^0.3.0",
