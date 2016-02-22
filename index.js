@@ -166,7 +166,7 @@ function progressObjects(options) {
         if (end === true) {
           // seems to interfere with stdout
           // bar.terminate()
-        } else {
+        } else if (!end) {
           var name = object.type + ' ' + object.length
           bar.tick(size / numObjects)
         }
