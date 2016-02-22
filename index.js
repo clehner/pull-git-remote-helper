@@ -56,10 +56,10 @@ function listRefs(read) {
 // upload-pack: fetch to client
 function uploadPack(read, repo, options) {
   /* multi_ack thin-pack side-band side-band-64k ofs-delta shallow no-progress
-   * include-tag multi_ack_detailed symref=HEAD:refs/heads/master
+   * include-tag multi_ack_detailed
    * agent=git/2.7.0 */
   var sendRefs = receivePackHeader([
-  ], repo.refs(), false)
+  ], repo.refs(), repo.symrefs(), false)
 
   var lines = pktLine.decode(read, options)
   var readHave = lines.haves()
@@ -288,36 +288,66 @@ report-status delete-refs side-band-64k quiet atomic ofs-delta
 
 // Get a line for each ref that we have. The first line also has capabilities.
 // Wrap with pktLine.encode.
-function receivePackHeader(capabilities, refSource, usePlaceholder) {
+function receivePackHeader(capabilities, refSource, symrefs, usePlaceholder) {
   var first = true
-  var ended
-  return function (abort, cb) {
-    if (ended) return cb(true)
-    refSource(abort, function (end, ref) {
-      ended = end
-      var name = ref && ref.name
-      var value = ref && ref.hash
-      if (first && usePlaceholder) {
-        first = false
-        if (end) {
-          // use placeholder data if there are no refs
-          value = '0000000000000000000000000000000000000000'
-          name = 'capabilities^{}'
+  var symrefed = {}
+  var symrefsObj = {}
+
+  return cat([
+    function (end, cb) {
+      if (end) cb(true)
+      else if (!symrefs) cb(true)
+      else pull(
+        symrefs,
+        pull.map(function (sym) {
+          symrefed[sym.ref] = true
+          symrefsObj[sym.name] = sym.ref
+          return 'symref=' + sym.name + ':' + sym.ref
+        }),
+        pull.collect(function (err, symrefCaps) {
+          if (err) return cb(err)
+          capabilities = capabilities.concat(symrefCaps)
+          cb(true)
+        })
+      )
+    },
+    pull(
+      refSource,
+      pull.map(function (ref) {
+        // insert symrefs next to the refs that they point to
+        var out = [ref]
+        if (ref.name in symrefed)
+          for (var symrefName in symrefsObj)
+            if (symrefsObj[symrefName] === ref.name)
+              out.push({name: symrefName, hash: ref.hash})
+        return out
+      }),
+      pull.flatten(),
+      pull.map(function (ref) {
+        var name = ref.name
+        var value = ref.hash
+        if (first && usePlaceholder) {
+          first = false
+          /*
+          if (end) {
+            // use placeholder data if there are no refs
+            value = '0000000000000000000000000000000000000000'
+            name = 'capabilities^{}'
+          }
+          */
+          name += '\0' + capabilities.join(' ')
         }
-        name += '\0' + capabilities.join(' ')
-      } else if (end) {
-        return cb(true)
-      }
-      cb(null, value + ' ' + name)
-    })
-  }
+        return value + ' ' + name
+      })
+    )
+  ])
 }
 
 // receive-pack: push from client
 function receivePack(read, repo, options) {
   var sendRefs = receivePackHeader([
     'delete-refs',
-  ], repo.refs(), true)
+  ], repo.refs(), null, true)
   var done = multicb({pluck: 1})
 
   return pktLine.encode(
