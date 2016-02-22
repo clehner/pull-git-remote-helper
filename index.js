@@ -157,14 +157,15 @@ function progressObjects(options) {
   }
 
   var numObjects
-  var size = process.stderr.columns - 5
+  var size = 60 // process.stderr.columns - 5
   var bar = new ProgressBar(':percent :bar', { total: size })
 
   var progress = function (readObject) {
     return function (abort, cb) {
       readObject(abort, function next(end, object) {
         if (end === true) {
-          bar.terminate()
+          // seems to interfere with stdout
+          // bar.terminate()
         } else {
           var name = object.type + ' ' + object.length
           bar.tick(size / numObjects)
