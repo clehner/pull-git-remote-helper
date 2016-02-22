@@ -1,4 +1,3 @@
-var packCodec = require('js-git/lib/pack-codec')
 var pull = require('pull-stream')
 var cat = require('pull-cat')
 var buffered = require('pull-buffered')
