@@ -60,7 +60,6 @@ pull(
 ## TODO
 
 - Handle shallow and unshallow fetch
-- Show progress during operations
 
 ## License
 
