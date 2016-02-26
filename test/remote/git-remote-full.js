@@ -32,6 +32,7 @@ pull(
   toPull(process.stdin),
   require('../../')({
     refs: function () { return pull.values(refs) },
+    symrefs: pull.empty,
     wantSink: pull.drain(function (want) {
       process.send({want: want})
     }),

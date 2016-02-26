@@ -15,6 +15,7 @@ pull(
   toPull(process.stdin),
   require('../../')({
     refs: pull.empty,
+    symrefs: pull.empty,
     hasObject: function (hash, cb) { cb(null, false) },
     getObject: function (hash, cb) { cb(new Error('No objects here')) },
     update: function (readRefs, readObjects) {
