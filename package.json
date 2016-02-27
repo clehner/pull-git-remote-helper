@@ -1,6 +1,6 @@
 {
   "name": "pull-git-remote-helper",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "use pull-streams to make gitremote-helpers(1)",
   "main": "index.js",
   "scripts": {
