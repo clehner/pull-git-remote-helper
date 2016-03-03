@@ -1,8 +1,10 @@
 var pull = require('pull-stream')
 var cat = require('pull-cat')
+var cache = require('pull-cache')
 var buffered = require('pull-buffered')
 var pack = require('./lib/pack')
 var pktLine = require('./lib/pkt-line')
+var indexPack = require('./lib/index-pack')
 var util = require('./lib/util')
 var multicb = require('multicb')
 var ProgressBar = require('progress')
@@ -58,6 +60,7 @@ function uploadPack(read, repo, options) {
    * include-tag multi_ack_detailed
    * agent=git/2.7.0 */
   var sendRefs = receivePackHeader([
+    'thin-pack',
   ], repo.refs(), repo.symrefs(), false)
 
   var lines = pktLine.decode(read, options)
@@ -367,16 +370,27 @@ function receivePack(read, repo, options) {
             if (err) return cb(err)
             if (updates.length === 0) return cb(true)
             var progress = progressObjects(options)
-            repo.update(pull.values(updates), pull(
-              lines.passthrough,
-              pack.decode({
-                verbosity: options.verbosity,
-                onHeader: function (numObjects) {
-                  progress.setNumObjects(numObjects)
-                }
-              }, repo, done()),
-              progress
-            ), done())
+
+            if (repo.uploadPack) {
+              var idxCb = done()
+              var packfile = cache(lines.passthrough)
+              indexPack(packfile(), function (err, idx) {
+                if (err) return idxCb(err)
+                repo.uploadPack(pull.values(updates), packfile(), idx, idxCb)
+              })
+            } else {
+              repo.update(pull.values(updates), pull(
+                lines.passthrough,
+                pack.decode({
+                  verbosity: options.verbosity,
+                  onHeader: function (numObjects) {
+                    progress.setNumObjects(numObjects)
+                  }
+                }, repo, done()),
+                progress
+              ), done())
+            }
+
             done(function (err) {
               cb(err || true)
             })
