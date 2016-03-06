@@ -2,6 +2,7 @@ var pull = require('pull-stream')
 var cat = require('pull-cat')
 var cache = require('pull-cache')
 var buffered = require('pull-buffered')
+var Repo = require('pull-git-repo')
 var pack = require('pull-git-pack')
 var pktLine = require('./lib/pkt-line')
 var indexPack = require('./lib/index-pack')
@@ -116,7 +117,7 @@ function uploadPack(read, repo, options) {
             else if (have.type != 'have')
               cb(new Error('Unknown have' + JSON.stringify(have)))
             else
-              repo.hasObject(have.hash, function (err, haveIt) {
+              repo.hasObjectFromAny(have.hash, function (err, haveIt) {
                 if (err) return cb(err)
                 if (!haveIt)
                   return readHave(null, next)
@@ -204,7 +205,7 @@ function getObjects(repo, commonHash, heads, shallows, cb) {
     if (ended) return cb(ended)
     if (hash in objectsAdded || hash == commonHash) return cb()
     objectsAdded[hash] = true
-    repo.getObject(hash, function (err, object) {
+    repo.getObjectFromAny(hash, function (err, object) {
       if (err) return cb(err)
       if (object.type == 'blob') {
         objects.push(object)
@@ -430,6 +431,8 @@ module.exports = function (repo) {
     verbosity: 1,
     progress: false
   }
+
+  repo = Repo(repo)
 
   function handleConnect(cmd, read) {
     var args = util.split2(cmd)
