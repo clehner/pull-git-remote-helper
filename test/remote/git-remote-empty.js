@@ -2,7 +2,7 @@
 
 var toPull = require('stream-to-pull-stream')
 var pull = require('pull-stream')
-var util = require('../../lib/util')
+var createGitObjectHash = require('pull-git-pack/lib/util').createGitObjectHash
 
 process.on('uncaughtException', function (err) {
   if (err.stack)
@@ -30,7 +30,7 @@ pull(
       readObjects(null, function next(end, object) {
         if (end === true) return
         if (end) throw end
-        var hasher = util.createGitObjectHash(object.type, object.length)
+        var hasher = createGitObjectHash(object.type, object.length)
         pull(
           object.read,
           hasher,

@@ -4,7 +4,7 @@ var path = require('path')
 var mktemp = require('mktemp')
 var rimraf = require('rimraf')
 var fs = require('fs')
-var repo = require('./repo')
+var repo = require('pull-git-pack/test/repo')
 
 var env = Object.create(process.env)
 env.PATH = path.join(__dirname, 'remote') + ':' + env.PATH

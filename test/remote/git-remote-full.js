@@ -2,7 +2,7 @@
 
 var toPull = require('stream-to-pull-stream')
 var pull = require('pull-stream')
-var repo = require('../repo')
+var repo = require('pull-git-pack/test/repo')
 
 process.on('uncaughtException', function (err) {
   if (err.stack)
