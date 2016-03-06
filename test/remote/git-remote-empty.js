@@ -2,7 +2,8 @@
 
 var toPull = require('stream-to-pull-stream')
 var pull = require('pull-stream')
-var createGitObjectHash = require('pull-git-pack/lib/util').createGitObjectHash
+var createGitHash = require('pull-hash/ext/git')
+var multicb = require('multicb')
 
 process.on('uncaughtException', function (err) {
   if (err.stack)
@@ -30,22 +31,23 @@ pull(
       readObjects(null, function next(end, object) {
         if (end === true) return
         if (end) throw end
-        var hasher = createGitObjectHash(object.type, object.length)
+        var done = multicb({ pluck: 1, spread: true })
         pull(
           object.read,
-          hasher,
-          pull.collect(function (err, bufs) {
-            if (err) throw err
-            var buf = Buffer.concat(bufs, object.length)
-            process.send({object: {
-              type: object.type,
-              data: buf.toString('ascii'),
-              length: object.length,
-              hash: hasher.digest('hex')
-            }})
-            readObjects(null, next)
-          })
+          createGitObjectHash(object, done()),
+          pull.collect(done())
         )
+        done(function (err, id, bufs) {
+          if (err) throw err
+          var buf = Buffer.concat(bufs, object.length)
+          process.send({object: {
+            type: object.type,
+            data: buf.toString('ascii'),
+            length: object.length,
+            hash: id
+          }})
+          readObjects(null, next)
+        })
       })
     }
   }),
