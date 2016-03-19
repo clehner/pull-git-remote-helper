@@ -374,12 +374,11 @@ function receivePack(read, repo, options) {
 
             if (repo.uploadPack) {
               var idxCb = done()
-              var packfile = cache(lines.passthrough)
-              indexPack(packfile(), function (err, idx) {
+              indexPack(lines.passthrough, function (err, idx, packfileFixed) {
                 if (err) return idxCb(err)
                 repo.uploadPack(pull.values(updates), pull.once({
                   pack: pull(
-                    packfile(),
+                    packfileFixed,
                     // for some reason i was getting zero length buffers which
                     // were causing muxrpc to fail, so remove them here.
                     pull.filter(function (buf) {
