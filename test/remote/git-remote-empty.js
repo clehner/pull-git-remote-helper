@@ -34,7 +34,7 @@ pull(
         var done = multicb({ pluck: 1, spread: true })
         pull(
           object.read,
-          createGitObjectHash(object, done()),
+          createGitHash(object, done()),
           pull.collect(done())
         )
         done(function (err, id, bufs) {
