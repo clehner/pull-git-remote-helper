@@ -353,6 +353,7 @@ function receivePackHeader(capabilities, refSource, symrefs, usePlaceholder) {
 function receivePack(read, repo, options) {
   var sendRefs = receivePackHeader([
     'delete-refs',
+    'no-thin',
   ], repo.refs(), null, true)
   var done = multicb({pluck: 1})
 
