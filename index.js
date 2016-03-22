@@ -263,6 +263,11 @@ function getTreeLinks(buf) {
   var links = {}
   for (var i = 0, j; j = buf.indexOf(0, i, 'ascii') + 1; i = j + 20) {
     var hash = buf.slice(j, j + 20).toString('hex')
+    var mode = parseInt(buf.slice(i, j).toString('ascii'), 8)
+    if (mode == 0160000) {
+      // skip link to git commit since it may not be in this repo
+      continue
+    }
     if (!(hash in links))
       links[hash] = true
   }
