@@ -71,6 +71,7 @@ function uploadPack(read, repo, options) {
   var sendPack
   var wants = {}
   var shallows = {}
+  var aborted
 
   // Packfile negotiation
   return cat([
@@ -84,7 +85,7 @@ function uploadPack(read, repo, options) {
         // read upload request (wants list) from client
         var readWant = lines.wants()
         readWant(null, function (end, want) {
-          if (end === true) return cb(true) // early client disconnect
+          if (end === true) return cb(aborted = true) // early client disconnect
           else if (end) cb(end)
           else nextWant(null, want)
         })
@@ -131,7 +132,7 @@ function uploadPack(read, repo, options) {
     ])),
 
     function havesDone(abort, cb) {
-      if (abort) return cb(abort)
+      if (abort || aborted) return cb(abort || aborted)
       // send pack file to client
       if (sendPack)
         return sendPack(abort, cb)
