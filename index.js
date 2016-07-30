@@ -65,13 +65,69 @@ function uploadPack(read, repo, options) {
   ], repo.refs(), repo.symrefs(), false)
 
   var lines = pktLine.decode(read, options)
-  var readHave = lines.haves()
+  var readWantHave = lines.haves()
   var acked
   var commonHash
   var sendPack
   var wants = {}
   var shallows = {}
   var aborted
+  var gotWants
+
+  function readWant(abort, cb) {
+    if (abort) return
+    // read upload request (wants list) from client
+    readWantHave(null, function next(end, want) {
+      if (end || want.type == 'flush-pkt') {
+        gotWants = true
+        readHave(end === true ? null : end, cb)
+        return
+      }
+      if (want.type == 'want') {
+        wants[want.hash] = true
+      } else if (want.type == 'shallow') {
+        shallows[want.hash] = true
+      } else {
+        var err = new Error("Unknown thing", want.type, want.hash)
+        return readWantHave(err, function (e) { cb(e || err) })
+      }
+      readWantHave(null, next)
+    })
+  }
+
+  function readHave(abort, cb) {
+    // Read upload haves (haves list).
+    // On first obj-id that we have, ACK
+    // If we have none, NAK.
+    // TODO: implement multi_ack_detailed
+    if (abort) return
+    readWantHave(null, function next(end, have) {
+      if (end === true) {
+        cb(true)
+      } else if (have.type === 'flush-pkt') {
+        // found no common object
+        if (!acked) {
+          cb(null, 'NAK')
+        } else {
+          readWantHave(null, next)
+        }
+      } else if (end)
+        cb(end)
+      else if (have.type != 'have')
+        cb(new Error('Unknown have' + JSON.stringify(have)))
+      else if (acked)
+        readWantHave(null, next)
+      else
+        repo.hasObjectFromAny(have.hash, function (err, haveIt) {
+          if (err) return cb(err)
+          if (!haveIt)
+            return readWantHave(null, next)
+          commonHash = haveIt
+          acked = true
+          cb(null, 'ACK ' + have.hash)
+        })
+    })
+  }
 
   // Packfile negotiation
   return cat([
@@ -79,56 +135,9 @@ function uploadPack(read, repo, options) {
       sendRefs,
       pull.once(''),
       function (abort, cb) {
-        if (abort) return
-        if (acked) return cb(true)
-
-        // read upload request (wants list) from client
-        var readWant = lines.wants()
-        readWant(null, function (end, want) {
-          if (end === true) return cb(aborted = true) // early client disconnect
-          else if (end) cb(end)
-          else nextWant(null, want)
-        })
-        function nextWant(end, want) {
-          if (end) return wantsDone(end === true ? null : end)
-          if (want.type == 'want') {
-            wants[want.hash] = true
-          } else if (want.type == 'shallow') {
-            shallows[want.hash] = true
-          } else {
-            var err = new Error("Unknown thing", want.type, want.hash)
-            return readWant(err, function (e) { cb(e || err) })
-          }
-          readWant(null, nextWant)
-        }
-
-        function wantsDone(err) {
-          if (err) return cb(err)
-          // Read upload haves (haves list).
-          // On first obj-id that we have, ACK
-          // If we have none, NAK.
-          // TODO: implement multi_ack_detailed
-          readHave(null, function next(end, have) {
-            if (end === true) {
-              // found no common object
-              acked = true
-              cb(null, 'NAK')
-            } else if (end)
-              cb(end)
-            else if (have.type != 'have')
-              cb(new Error('Unknown have' + JSON.stringify(have)))
-            else
-              repo.hasObjectFromAny(have.hash, function (err, haveIt) {
-                if (err) return cb(err)
-                if (!haveIt)
-                  return readHave(null, next)
-                commonHash = haveIt
-                acked = true
-                cb(null, 'ACK ' + have.hash)
-              })
-          })
-        }
-      },
+        if (!gotWants) readWant(abort, cb)
+        else readHave(abort, cb)
+      }
     ])),
 
     function havesDone(abort, cb) {
@@ -143,7 +152,7 @@ function uploadPack(read, repo, options) {
           progress.setNumObjects(numObjects)
           sendPack = pack.encode(options, numObjects,
             progress(readObjects))
-          havesDone(abort, cb)
+          cb(null, '')
         }
       )
     }
