@@ -72,6 +72,7 @@ function uploadPack(read, repo, options) {
   var wants = {}
   var shallows = {}
   var aborted
+  var hasWants
   var gotWants
 
   function readWant(abort, cb) {
@@ -85,6 +86,7 @@ function uploadPack(read, repo, options) {
       }
       if (want.type == 'want') {
         wants[want.hash] = true
+        hasWants = true
       } else if (want.type == 'shallow') {
         shallows[want.hash] = true
       } else {
@@ -140,11 +142,12 @@ function uploadPack(read, repo, options) {
       }
     ])),
 
-    function havesDone(abort, cb) {
+    function (abort, cb) {
       if (abort || aborted) return cb(abort || aborted)
       // send pack file to client
       if (sendPack)
         return sendPack(abort, cb)
+      if (!hasWants) return cb(true)
       getObjects(repo, commonHash, wants, shallows,
         function (err, numObjects, readObjects) {
           if (err) return cb(err)
@@ -518,15 +521,7 @@ module.exports = function (repo) {
           else
             next(abort, cb)
         } else {
-          // HACK: silence error when writing to closed stream
-          try {
-            cb(null, data)
-          } catch(e) {
-            if (e.message == 'process.stdout cannot be closed.'
-             || e.message == 'This socket is closed.')
-              process.exit(1)
-            throw e
-          }
+          cb(null, data)
         }
       })
     }
