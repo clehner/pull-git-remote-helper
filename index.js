@@ -73,7 +73,7 @@ function uploadPack(read, repo, options) {
   var shallows = {}
   var aborted
   var hasWants
-  var gotWants
+  var gotWants, gotHaves
 
   function readWant(abort, cb) {
     if (abort) return
@@ -105,6 +105,12 @@ function uploadPack(read, repo, options) {
     if (abort) return
     readWantHave(null, function next(end, have) {
       if (end === true) {
+        gotHaves = true
+        if (!acked) {
+          cb(null, 'NAK')
+        } else {
+          cb(true)
+        }
         cb(true)
       } else if (have.type === 'flush-pkt') {
         // found no common object
@@ -138,7 +144,8 @@ function uploadPack(read, repo, options) {
       pull.once(''),
       function (abort, cb) {
         if (!gotWants) readWant(abort, cb)
-        else readHave(abort, cb)
+        else if (!gotHaves) readHave(abort, cb)
+        else cb(true)
       }
     ])),
 
