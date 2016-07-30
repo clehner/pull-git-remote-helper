@@ -453,7 +453,7 @@ function prepend(data, read) {
 module.exports = function (repo) {
   var ended
   var options = {
-    verbosity: 1,
+    verbosity: +process.env.GIT_VERBOSITY || 1,
     progress: false
   }
 
@@ -489,7 +489,13 @@ module.exports = function (repo) {
 
   return function (read) {
     var b = buffered()
+    if (options.verbosity >= 3) {
+      read = pull.through(function (data) {
+        console.error('>', JSON.stringify(data.toString('ascii')))
+      })(read)
+    }
     b(read)
+
     var command
 
     function getCommand(cb) {
@@ -528,6 +534,9 @@ module.exports = function (repo) {
           else
             next(abort, cb)
         } else {
+          if (options.verbosity >= 3) {
+            console.error('<', JSON.stringify(data))
+          }
           cb(null, data)
         }
       })
