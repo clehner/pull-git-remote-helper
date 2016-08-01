@@ -73,15 +73,14 @@ function uploadPack(read, repo, options) {
   var shallows = {}
   var aborted
   var hasWants
-  var gotWants, gotHaves
+  var gotHaves
 
   function readWant(abort, cb) {
     if (abort) return
     // read upload request (wants list) from client
     readWantHave(null, function next(end, want) {
       if (end || want.type == 'flush-pkt') {
-        gotWants = true
-        readHave(end === true ? null : end, cb)
+        cb(end || true, cb)
         return
       }
       if (want.type == 'want') {
@@ -103,6 +102,7 @@ function uploadPack(read, repo, options) {
     // If we have none, NAK.
     // TODO: implement multi_ack_detailed
     if (abort) return
+    if (gotHaves) return cb(true)
     readWantHave(null, function next(end, have) {
       if (end === true) {
         gotHaves = true
@@ -111,7 +111,6 @@ function uploadPack(read, repo, options) {
         } else {
           cb(true)
         }
-        cb(true)
       } else if (have.type === 'flush-pkt') {
         // found no common object
         if (!acked) {
@@ -137,35 +136,37 @@ function uploadPack(read, repo, options) {
     })
   }
 
+  function readPack(abort, cb) {
+    if (abort || aborted) return console.error('abrt', abort || aborted), cb(abort || aborted)
+    if (sendPack) return sendPack(abort, cb)
+    // send pack file to client
+    if (!hasWants) return cb(true)
+    if (options.verbosity >= 2) {
+      console.error('common', commonHash, 'wants', wants)
+    }
+    getObjects(repo, commonHash, wants, shallows,
+      function (err, numObjects, readObjects) {
+        if (err) return cb(err)
+        var progress = progressObjects(options)
+        progress.setNumObjects(numObjects)
+        sendPack = pack.encode(options, numObjects, progress(readObjects))
+        if (options.verbosity >= 1) {
+          console.error('retrieving', numObjects, 'git objects')
+        }
+        sendPack(null, cb)
+      }
+    )
+  }
+
   // Packfile negotiation
   return cat([
     pktLine.encode(cat([
       sendRefs,
       pull.once(''),
-      function (abort, cb) {
-        if (!gotWants) readWant(abort, cb)
-        else if (!gotHaves) readHave(abort, cb)
-        else cb(true)
-      }
+      readWant,
+      readHave
     ])),
-
-    function (abort, cb) {
-      if (abort || aborted) return cb(abort || aborted)
-      // send pack file to client
-      if (sendPack)
-        return sendPack(abort, cb)
-      if (!hasWants) return cb(true)
-      getObjects(repo, commonHash, wants, shallows,
-        function (err, numObjects, readObjects) {
-          if (err) return cb(err)
-          var progress = progressObjects(options)
-          progress.setNumObjects(numObjects)
-          sendPack = pack.encode(options, numObjects,
-            progress(readObjects))
-          cb(null, '')
-        }
-      )
-    }
+    readPack
   ])
 }
 
@@ -246,6 +247,7 @@ function getObjects(repo, commonHash, heads, shallows, cb) {
 
   done(function (err) {
     if (err) return cb(err)
+    // console.error(objects.reduce(function (n, obj) { return obj.length + n}, 0) + ' bytes')
     cb(null, objects.length, pull.values(objects))
   })
 }
