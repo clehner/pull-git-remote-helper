@@ -398,6 +398,13 @@ function receivePack(read, repo, options) {
             if (updates.length === 0) return cb(true)
             var progress = progressObjects(options)
 
+            var hasPack = !updates.every(function (update) {
+              return update.new === null
+            })
+            if (!hasPack) {
+              return repo.update(pull.values(updates), pull.empty(), done())
+            }
+
             if (repo.uploadPack) {
               var idxCb = done()
               indexPack(lines.passthrough, function (err, idx, packfileFixed) {
