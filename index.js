@@ -144,12 +144,13 @@ function uploadPack(read, repo, options) {
     if (options.verbosity >= 2) {
       console.error('common', commonHash, 'wants', wants)
     }
+    // TODO: show progress during getObjects
     getObjects(repo, commonHash, wants, shallows,
       function (err, numObjects, readObjects) {
         if (err) return cb(err)
-        var progress = progressObjects(options)
-        progress.setNumObjects(numObjects)
-        sendPack = pack.encode(options, numObjects, progress(readObjects))
+        // var progress = progressObjects(options)
+        // progress.setNumObjects(numObjects)
+        sendPack = pack.encode(options, numObjects, readObjects)
         if (options.verbosity >= 1) {
           console.error('retrieving', numObjects, 'git objects')
         }
