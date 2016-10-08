@@ -9,6 +9,9 @@ var indexPack = require('pull-git-pack/lib/index-pack')
 var util = require('./lib/util')
 var multicb = require('multicb')
 var ProgressBar = require('progress')
+var pkg = require('./package.json')
+
+var agentCap = 'agent=' + pkg.name + '/' + pkg.version
 
 function handleOption(options, name, value) {
   switch (name) {
@@ -61,6 +64,7 @@ function uploadPack(read, repo, options) {
    * include-tag multi_ack_detailed
    * agent=git/2.7.0 */
   var sendRefs = receivePackHeader([
+    agentCap,
   ], repo.refs(), repo.symrefs())
 
   var lines = pktLine.decode(read, {
@@ -386,6 +390,7 @@ function receivePackHeader(capabilities, refSource, symrefs) {
 // receive-pack: push from client
 function receivePack(read, repo, options) {
   var sendRefs = receivePackHeader([
+    agentCap,
     'delete-refs',
     'no-thin',
   ], repo.refs(), null)
