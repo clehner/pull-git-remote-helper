@@ -61,10 +61,12 @@ function uploadPack(read, repo, options) {
    * include-tag multi_ack_detailed
    * agent=git/2.7.0 */
   var sendRefs = receivePackHeader([
-    'thin-pack',
-  ], repo.refs(), repo.symrefs(), false)
+  ], repo.refs(), repo.symrefs())
 
-  var lines = pktLine.decode(read, options)
+  var lines = pktLine.decode(read, {
+    onCaps: onCaps,
+    verbosity: options.verbosity
+  })
   var readWantHave = lines.haves()
   var acked
   var commonHash
@@ -74,6 +76,9 @@ function uploadPack(read, repo, options) {
   var aborted
   var hasWants
   var gotHaves
+
+  function onCaps(caps) {
+  }
 
   function readWant(abort, cb) {
     if (abort) return
@@ -101,6 +106,7 @@ function uploadPack(read, repo, options) {
     // On first obj-id that we have, ACK
     // If we have none, NAK.
     // TODO: implement multi_ack_detailed
+    // FIXME!
     if (abort) return
     if (gotHaves) return cb(true)
     readWantHave(null, function next(end, have) {
@@ -322,7 +328,7 @@ report-status delete-refs side-band-64k quiet atomic ofs-delta
 
 // Get a line for each ref that we have. The first line also has capabilities.
 // Wrap with pktLine.encode.
-function receivePackHeader(capabilities, refSource, symrefs, usePlaceholder) {
+function receivePackHeader(capabilities, refSource, symrefs) {
   var first = true
   var symrefed = {}
   var symrefsObj = {}
@@ -360,7 +366,7 @@ function receivePackHeader(capabilities, refSource, symrefs, usePlaceholder) {
       pull.map(function (ref) {
         var name = ref.name
         var value = ref.hash
-        if (first && usePlaceholder) {
+        if (first) {
           first = false
           /*
           if (end) {
@@ -382,7 +388,7 @@ function receivePack(read, repo, options) {
   var sendRefs = receivePackHeader([
     'delete-refs',
     'no-thin',
-  ], repo.refs(), null, true)
+  ], repo.refs(), null)
   var done = multicb({pluck: 1})
 
   return pktLine.encode(
